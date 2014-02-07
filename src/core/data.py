@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import requests
-import logger
+from . import logger
 
 
 class TrainType:

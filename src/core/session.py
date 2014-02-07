@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import logger
+from . import logger
 
 
 class SessionData:

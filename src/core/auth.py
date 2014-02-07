@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 import re
 import requests
-import os
-import logger
-import session
-import sys
+from . import logger
+from . import session
 
 
 class CaptchaType:
@@ -27,44 +25,12 @@ class CaptchaData:
 
 class AuthenticationManager:
 
-    def __init__(self):
+    def __init__(self, captcha_solver):
         self.login_state = LoginState.LOGGED_OUT
         self.session_data = session.SessionData()
         self.username = None
         self.captcha_image = None
-        self.captcha_solver = self._console_captcha_solver
-
-    @staticmethod
-    def _console_captcha_solver(image_data):
-        # This is the default captcha "solver".
-        # All it does is write the captcha image to disk,
-        # then prompt the user to answer through the console.
-        # Obviously, you should replace this method if you want
-        # to use a GUI or OCR to provide the answer.
-        # The solver function takes a single parameter, which is the
-        # image as a sequence of bytes, and returns the answer as a string.
-        
-        with open("captcha.jpg", "wb") as f:
-            f.write(image_data)
-        
-        # 'raw_input' was removed in Python 3 and is now just named 'input'.
-        if sys.version_info[0] < 3:
-            answer = raw_input("Enter answer: ")
-        else:
-            answer = input("Enter answer: ")
-
-        # Use empty input (user just hits "enter" without typing anything)
-        # as our sentinel value to skip remaining retries
-        if answer == "":
-            answer = None
-
-        # Optionally delete the captcha image after obtaining an answer.
-        # It's usually more convenient to keep it, since image viewers can
-        # automatically refresh when a new captcha image is downloaded.
-        delete_captcha_file = False
-        if delete_captcha_file:
-            os.remove("captcha.jpg")
-        return answer
+        self.captcha_solver = captcha_solver
 
     @staticmethod
     def _get_login_data(username, password, captcha_answer):
@@ -163,20 +129,6 @@ class AuthenticationManager:
                 # so far; if anything changes, well... we're screwed.
                 assert False
 
-        # Pretty-print state variables to log
-        # dict_str = "------------------------\n"
-        # if sys.version_info[0] < 3:
-        #     items = state_dict.iteritems()
-        # else:
-        #     items = state_dict.items()
-        # for key, value in items:
-        #     if value is None:
-        #         dict_str += key + " = None\n"
-        #     else:
-        #         dict_str += key + " = '" + value + "'\n"
-        # dict_str += "------------------------"
-        # logger.debug("Got state variables:\n" + dict_str)
-        # logger.debug("Got state variables: " + str(state_dict))
         return state_dict
 
     def _check_captcha_needs_refresh(self, captcha_type):
@@ -193,7 +145,6 @@ class AuthenticationManager:
         return False
 
     def _solve_captcha_image(self):
-        assert self.captcha_solver is not None
         answer = self.captcha_solver(self.captcha_image.image_data)
         if answer is not None:
             logger.debug("Captcha input: " + answer)
@@ -277,14 +228,8 @@ class AuthenticationManager:
         self.username = None
 
     def request_captcha_image(self, captcha_type):
-        # Login captcha is only useful if we're logged out, right?
-        # And obviously, we can only purchase tickets if logged in...
-        # Retrieving a login captcha while logged in seems to be okay,
-        # but retrieving a purchase captcha while logged out fails.
-        if captcha_type == CaptchaType.LOGIN:
-            assert self.login_state == LoginState.LOGGED_OUT
-        elif captcha_type == CaptchaType.PURCHASE:
-            assert self.login_state == LoginState.LOGGED_IN
+        # Note: Requesting a login captcha while logged in seems to be okay,
+        # but requesting a purchase captcha while logged out fails.
 
         url = "https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew.do"
         params = self._get_captcha_request_params(captcha_type)
@@ -295,9 +240,9 @@ class AuthenticationManager:
         # If this is our first request, we will get a new session ID token.
         self.session_data.set_session_cookies(response)
 
+        content_type = response.headers.get("Content-Type").split(";")[0]
+        assert content_type == "image/jpeg"
         logger.debug("Fetched captcha image: " + response.url, response)
-        logger.debug("Captcha image MIME type: " + response.headers.get("Content-Type").split(";")[0])
-
         self.captcha_image = CaptchaData(captcha_type, self.session_data.session_id, response.content)
 
     def check_captcha_answer(self, captcha_type, answer):
