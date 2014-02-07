@@ -1,0 +1,4 @@
+.idea/
+*.pyc
+captcha.jpg
+main.py
