@@ -92,7 +92,7 @@ class TicketType:
     }
 
     ID_LOOKUP = {
-        OTHER:            "",
+        # OTHER:            "",
         NO_SEAT:          "W",
         HARD_SEAT:        "1",
         SOFT_SEAT:        "2",
@@ -106,7 +106,7 @@ class TicketType:
     }
 
     REVERSE_ID_LOOKUP = {
-        "":  OTHER,
+        # "":  OTHER,
         "W": NO_SEAT,
         "1": HARD_SEAT,
         "2": SOFT_SEAT,
@@ -117,4 +117,18 @@ class TicketType:
         "M": FIRST_CLASS,
         "P": SPECIAL,
         "9": BUSINESS
+    }
+
+    REVERSE_ID2_LOOKUP = {
+        # "MIN": OTHER,
+        "WZ": NO_SEAT,
+        "A1": HARD_SEAT,
+        "A2": SOFT_SEAT,
+        "A3": HARD_SLEEPER,
+        "A4": SOFT_SLEEPER,
+        "A6": SOFT_SLEEPER_PRO,
+        "O":  SECOND_CLASS,
+        "M":  FIRST_CLASS,
+        "P":  SPECIAL,
+        "A9": BUSINESS
     }

@@ -277,6 +277,7 @@ class TicketQuery:
         train.name = train_data["station_train_code"]
         train.id = train_data["train_no"]
         # Kind of hacky -- we're using the first character of the train's name
+        # TODO: FINISH THIS LIST?
         train.type = enums.TrainType.REVERSE_ABBREVIATION_LOOKUP.get(train.name[0], enums.TrainType.OTHER)
         train.departure_station = self.origin
         train.arrival_station = self.destination
@@ -293,19 +294,19 @@ class TicketQuery:
             ticket = data.Ticket()
             ticket.count = data.TicketCount(train_data[key + "_num"])
             ticket.type = value
-            train.tickets.append(ticket)
+            train.tickets[value] = ticket
         return train
 
     def execute(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/query?" + self._get_query_string()
         response = requests.get(url, verify=False)
         response.raise_for_status()
+        json_data = common.read_json_data(response)
         logger.debug("Got ticket list from {0} to {1} on {2}".format(
             self._get_station_id(self.origin),
             self._get_station_id(self.destination),
             self._get_date_str(self.date)
         ), response)
-        json_data = common.read_json_data(response)
         return [self._parse_query_results(train_json) for train_json in json_data]
 
 

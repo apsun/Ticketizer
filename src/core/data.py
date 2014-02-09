@@ -3,6 +3,7 @@ import numbers
 import requests
 from . import logger
 from . import common
+from . import enums
 
 
 class Train:
@@ -16,7 +17,7 @@ class Train:
         self.type = None
         # A list of ticket information. There should
         # be at maximum one item per ticket type.
-        self.tickets = []
+        self.tickets = {}
         # The departure time of the train (datetime.datetime)
         self.departure_time = None
         # The arrival time of the train (datetime.datetime)
@@ -43,7 +44,7 @@ class Train:
 
     def _get_price_query_params(self):
         # Once again, we have a case where the order of params matters.
-        # I hate you, 12306.
+        # I hate you so much I want to rearrange these params up your rectum.
 
         return "train_no=%s&" \
                "from_station_no=%s&" \
@@ -60,8 +61,17 @@ class Train:
         response = requests.get(url, verify=False)
         response.raise_for_status()
         json_data = common.read_json_data(response)
-        # TODO: FINISH
-        pass
+        for key, value in json_data.items():
+            if not isinstance(value, str):
+                continue
+            ticket_type = enums.TicketType.REVERSE_ID2_LOOKUP.get(key)
+            if ticket_type is None:
+                continue
+            if self.tickets[ticket_type].count.status == TicketCount.NotApplicable:
+                continue
+            assert value[0] == "¥"
+            assert value[-2] == "."
+            self.tickets[ticket_type].price = float(value[1:])
 
 
 class Station:
@@ -136,7 +146,7 @@ class TicketCount:
         elif count_string == "*":  # Tickets are not being sold yet (or none remaining, occasionally)
             self.status = self.NotYetSold
             self.value = 0
-        elif count_string == "有":  # Large amount of tickets remaining, count unknown
+        elif count_string == "有":  # More than 20 tickets remaining
             self.status = self.LargeCount
             self.value = float("inf")
         elif count_string == "无":  # No tickets remaining
