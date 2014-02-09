@@ -1,18 +1,13 @@
 # -*- coding: utf-8 -*-
-import re
 import requests
 from . import logger
 from . import session
+from . import common
 
 
 class CaptchaType:
     LOGIN = 0
     PURCHASE = 1
-
-
-class LoginState:
-    LOGGED_OUT = 0
-    LOGGED_IN = 1
 
 
 class CaptchaData:
@@ -26,8 +21,8 @@ class CaptchaData:
 class AuthenticationManager:
 
     def __init__(self, captcha_solver):
-        self.login_state = LoginState.LOGGED_OUT
         self.session_data = session.SessionData()
+        self.logged_in = False
         self.username = None
         self.captcha_image = None
         self.captcha_solver = captcha_solver
@@ -71,9 +66,7 @@ class AuthenticationManager:
         cookies = self.session_data.get_session_cookies()
         response = requests.post(url, data=None, cookies=cookies, verify=False)
         response.raise_for_status()
-        json = response.json()
-        json_data = json.get("data")
-        return json_data is not None and json_data.get("flag") is True
+        return common.read_json_data(response)["flag"] is True
 
     def _get_state_vars(self):
         # WARNING: VERY HACKY THINGS AHEAD
@@ -127,6 +120,7 @@ class AuthenticationManager:
             else:
                 # Only going to handle null and single-quote strings
                 # so far; if anything changes, well... we're screwed.
+                # That means no expressions or anything like that.
                 assert False
 
         return state_dict
@@ -151,7 +145,7 @@ class AuthenticationManager:
         return answer
 
     def login(self, username, password, captcha_retries=0):
-        if self.login_state == LoginState.LOGGED_IN:
+        if self.logged_in:
             logger.debug("Already logged in, if you are switching accounts, log out first!")
             return True
 
@@ -179,9 +173,9 @@ class AuthenticationManager:
             # This "validates" our session ID token so we can log in
             if not self.check_captcha_answer(CaptchaType.LOGIN, captcha_answer):
                 if captcha_retries <= 0:
-                    logger.error("Incorrect captcha answer, login failed")
+                    logger.debug("Incorrect captcha answer, login failed")
                     return False
-                logger.error("Incorrect captcha answer, retrying " + str(captcha_retries) + " more time(s)")
+                logger.debug("Incorrect captcha answer, retrying " + str(captcha_retries) + " more time(s)")
                 captcha_retries -= 1
             else:
                 break
@@ -195,26 +189,20 @@ class AuthenticationManager:
         cookies = self.session_data.get_session_cookies()
         response = requests.post(url, data, cookies=cookies, verify=False)
         response.raise_for_status()
-        # TODO: Do we need to check for an updated session ID here?
-        # self._session_data.set_session_cookies(response)
-        
         # Check server response to see if login was successful
         # response > data > loginCheck should be "Y" if we logged in
-        json = response.json()
-        json_data = json.get("data")
-        if json_data is None or json_data.get("loginCheck") != "Y":
-            messages = json.get("messages")
-            if messages is not None:
-                logger.error("Login failed: " + ";".join(messages), response)
-            else:
-                logger.error("Login failed for unknown reason", response)
-            return False
-        logger.debug("Login successful", response)
-        self.login_state = LoginState.LOGGED_IN
-        self.username = username
+        # otherwise, loginCheck will be absent
+        json = common.read_json(response)
+        success = common.get_dict_value_coalesce(json, "data", "loginCheck")
+        if success:
+            logger.debug("Login successful", response)
+            self.logged_in = True
+            self.username = username
+        else:
+            logger.debug("Login failed, reason: " + ";".join(json.get("messages")), response)
 
     def logout(self):
-        if self.login_state == LoginState.LOGGED_OUT:
+        if not self.logged_in:
             logger.debug("Already logged out, no need to log out again!")
             return
 
@@ -224,7 +212,7 @@ class AuthenticationManager:
         # Logging out gives us a new session ID token, 
         # but it's not really that useful anyways
         self.session_data.set_session_cookies(response)
-        self.login_state = LoginState.LOGGED_OUT
+        self.logged_in = False
         self.username = None
 
     def request_captcha_image(self, captcha_type):
@@ -236,7 +224,6 @@ class AuthenticationManager:
         cookies = self.session_data.get_session_cookies()
         response = requests.get(url, params=params, cookies=cookies, verify=False)
         response.raise_for_status()
-
         # If this is our first request, we will get a new session ID token.
         self.session_data.set_session_cookies(response)
 
@@ -246,31 +233,32 @@ class AuthenticationManager:
         self.captcha_image = CaptchaData(captcha_type, self.session_data.session_id, response.content)
 
     def check_captcha_answer(self, captcha_type, answer):
-        # Check some common errors to save a network request
-        if len(answer) != 4:
-            logger.debug("Captcha answer not 4 characters")
-            return False
-        if re.match("^[a-zA-Z0-9]+$", answer) is None:
-            logger.debug("Captcha answer not alphanumeric")
-            return False
-
         url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"
         data = self._get_captcha_check_data(captcha_type, answer)
         cookies = self.session_data.get_session_cookies()
         response = requests.post(url, data, cookies=cookies, verify=False)
         response.raise_for_status()
-        # TODO: Do we need to check for an updated session ID here?
-        # self._session_data.set_session_cookies(response)
-        success = response.json().get("data") == "Y"
+        success = common.is_true(common.read_json_data(response))
         logger.debug("Captcha entered correctly: " + str(success), response)
         return success
 
     def refresh_login_state(self):
+        state_changed = False
         if self._check_logged_in():
-            self.username = self._get_state_vars()["sessionInit"]
-            self.login_state = LoginState.LOGGED_IN
-            logger.debug("Status refreshed to logged in state")
+            username = self._get_state_vars()["sessionInit"]
+            if not self.logged_in or self.username != username:
+                state_changed = True
+            self.username = username
+            self.logged_in = True
         else:
+            if self.logged_in:
+                state_changed = True
             self.username = None
-            self.login_state = LoginState.LOGGED_OUT
-            logger.debug("Status refreshed to logged out state")
+            self.logged_in = False
+
+        if state_changed:
+            # This should not happen, unless our session timed out.
+            # If it does, someone probably stole our session token.
+            logger.warning("State changed when refreshing login status")
+
+        return self.logged_in

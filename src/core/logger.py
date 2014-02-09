@@ -39,7 +39,7 @@ def log_convert_response(log_type, msg, response):
     elif isinstance(response, requests.Response):
         log(log_type, "{0} (status code: {1})".format(msg, response.status_code))
     else:
-        assert False
+        raise TypeError()
     
 
 def error(msg, response=None):

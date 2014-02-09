@@ -2,6 +2,9 @@
 import datetime
 import requests
 from . import data
+from . import logger
+from . import common
+from . import enums
 
 
 class TicketPricing:
@@ -71,11 +74,11 @@ class TrainSorter:
             self._sort_by_key(train_list, lambda x: min(x.tickets, lambda t: t.price), False)
 
     def sort_by_type(self, train_list, reverse):
-        self._sort_by_key(train_list, TrainSorter._type_key, reverse)
+        self._sort_by_key(train_list, self._type_key, reverse)
 
     @staticmethod
     def _type_key(train):
-        types = data.TrainType
+        types = enums.TrainType
         return {
             types.OTHER: 0,
             types.K: 1,
@@ -98,7 +101,7 @@ class TrainFilter:
     def __init__(self):
         # Type mask to filter out certain train types.
         # 0 bit = ignored, 1 bit = OK
-        self.train_type_filter = data.TrainType.ALL
+        self.train_type_filter = enums.TrainType.ALL
         # Dictionary of train names to blacklist
         # True = ignored, False/no key = OK
         self.blacklist = {}
@@ -117,7 +120,7 @@ class TrainFilter:
         # Below are ticket filters
 
         # Type mask to filter ticket types, just like train_type_filter
-        self.ticket_type_filter = data.TicketType.ALL
+        self.ticket_type_filter = enums.TicketType.ALL
         # Price filter. Tickets with prices outside
         # this range will be ignored. (ValueRange)
         self.price_range = None
@@ -168,7 +171,7 @@ class TrainFilter:
                 continue
             yield ticket
     
-    def filter_trains(self, train_list):
+    def filter(self, train_list):
         # Optimized for speed when filtering a large number of trains.
         # Use this when working with lists of trains instead of calling 
         # individual check functions one at a time.
@@ -229,63 +232,93 @@ class TicketQuery:
         # (If using str, use the station's 3-letter ID)
         self.destination = None
 
+    @staticmethod
+    def _get_station_id(station):
+        if isinstance(station, str):
+            return station
+        if isinstance(station, data.Station):
+            return station.id
+        raise TypeError("Station is not a string or a Station object")
+
+    @staticmethod
+    def _get_date_str(date):
+        if isinstance(date, str):
+            return date
+        elif isinstance(date, datetime.date) or isinstance(date, datetime.datetime):
+            return common.date_to_str(date)
+        raise TypeError("Date is not a string, datetime, or date instance")
+
+    @staticmethod
+    def _parse_train_time(date_string, time_string):
+        return datetime.datetime.strptime(date_string + " " + time_string, "%Y%m%d %H:%M")
+
     def _get_query_string(self):
         # WTF! Apparently the order of the params DOES MATTER; if you
         # mess up the order, you get an invalid result.
         # Instead of using the built-in method with dicts,
         # now we have to manually concatenate the query parameters.
-        train_date = self._get_date()
-        from_station = self._get_origin_id()
-        to_station = self._get_destination_id()
+        train_date = self._get_date_str(self.date)
+        from_station = self._get_station_id(self.origin)
+        to_station = self._get_station_id(self.destination)
         purpose_codes = self.type
         return "leftTicketDTO.train_date=%s&" \
                "leftTicketDTO.from_station=%s&" \
                "leftTicketDTO.to_station=%s&" \
                "purpose_codes=%s" % (train_date, from_station, to_station, purpose_codes)
 
-    def _get_destination_id(self):
-        destination = self.destination
-        if isinstance(destination, str):
-            return destination
-        if isinstance(destination, data.Station):
-            return destination.id
-        assert False
+    def _parse_query_results(self, train_json):
+        # The format of each item is as follows:
+        # "queryLeftNewDTO": { ... },
+        # "secretStr": "...",
+        # "buttonTextInfo": "..."
+        train_data = train_json["queryLeftNewDTO"]
+        train = data.Train()
 
-    def _get_origin_id(self):
-        origin = self.origin
-        if isinstance(origin, str):
-            return origin
-        if isinstance(origin, data.Station):
-            return origin.id
-        assert False
-
-    def _get_date(self):
-        date = self.date
-        if isinstance(date, str):
-            return date
-        elif isinstance(date, datetime.date) or isinstance(date, datetime.datetime):
-            return date.strftime("%Y-%m-%d")
-        assert False
+        train.name = train_data["station_train_code"]
+        train.id = train_data["train_no"]
+        # Kind of hacky -- we're using the first character of the train's name
+        train.type = enums.TrainType.REVERSE_ABBREVIATION_LOOKUP.get(train.name[0], enums.TrainType.OTHER)
+        train.departure_station = self.origin
+        train.arrival_station = self.destination
+        train.departure_index = train_data["from_station_no"]
+        train.arrival_index = train_data["to_station_no"]
+        train.has_begun_selling = common.is_true(train_data["canWebBuy"])
+        train.begin_selling_time = datetime.datetime.strptime(train_data["sale_time"], "%H%M").time()
+        train.secret_key = train_json["secretStr"]
+        train.departure_time = self._parse_train_time(train_data["start_train_date"], train_data["start_time"])
+        train.duration = datetime.timedelta(minutes=int(train_data["lishiValue"]))
+        train.arrival_time = train.departure_time + train.duration
+        train.seat_types = train_data["seat_types"]
+        for key, value in enums.TicketType.REVERSE_ABBREVIATION_LOOKUP.items():
+            ticket = data.Ticket()
+            ticket.count = data.TicketCount(train_data[key + "_num"])
+            ticket.type = value
+            train.tickets.append(ticket)
+        return train
 
     def execute(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/query?" + self._get_query_string()
         response = requests.get(url, verify=False)
         response.raise_for_status()
-        # If the content is -1, our query was invalid
-        assert response.content != "-1"
-        # TODO: Return a list of tickets
+        logger.debug("Got ticket list from {0} to {1} on {2}".format(
+            self._get_station_id(self.origin),
+            self._get_station_id(self.destination),
+            self._get_date_str(self.date)
+        ), response)
+        json_data = common.read_json_data(response)
+        return [self._parse_query_results(train_json) for train_json in json_data]
 
 
 class TicketSearcher:
 
     def __init__(self):
         self.query = None
-        self.train_filter = None
+        self.filter = None
         self.sorter = None
 
     def filter_by_train(self, train_list):
-        if self.train_filter is not None:
-            return list(self.train_filter(train_list))
+        if self.filter is not None:
+            return list(self.filter.filter(train_list))
         else:
             return train_list
 
@@ -298,34 +331,3 @@ class TicketSearcher:
         train_list = self.filter_by_train(train_list)
         self.sort_trains(train_list)
         return train_list
-
-
-class QueryResultParser:
-
-    @staticmethod
-    def convert_ticket_count(count_string):
-        # For god's sake, 12306. For god's sake.
-        # TODO: What does the * character mean?
-        if count_string == "--":  # Not applicable (train doesn't have this type of ticket)
-            return None
-        if count_string == "有":  # Large amount of tickets remaining, count unknown
-            return -1
-        if count_string == "无":  # No tickets remaining
-            return 0
-        return int(count_string)
-
-    @staticmethod
-    def convert_ticket_type(type_string):
-        return {
-            "swz": data.TicketType.BUSINESS,
-            "tz": data.TicketType.SPECIAL,
-            "zy": data.TicketType.FIRST_CLASS,
-            "ze": data.TicketType.SECOND_CLASS,
-            "gr": data.TicketType.SOFT_SLEEPER_PRO,
-            "rw": data.TicketType.SOFT_SLEEPER,
-            "yw": data.TicketType.HARD_SLEEPER,
-            "rz": data.TicketType.SOFT_SEAT,
-            "yz": data.TicketType.HARD_SEAT,
-            "wz": data.TicketType.NO_SEAT,
-            "qt": data.TicketType.OTHER
-        }[type_string]
