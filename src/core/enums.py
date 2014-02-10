@@ -137,8 +137,22 @@ class TicketType:
 
 
 class TicketStatus:
-    NotApplicable = 0  # --  -> int(0)
-    NotYetSold = 1     # *   -> int(0)
-    LargeCount = 2     # 有  -> float("inf")
-    SoldOut = 3        # 无  -> int(0)
-    Normal = 4         # int -> int
+    NotApplicable = 0
+    NotYetSold = 1
+    LargeCount = 2
+    SoldOut = 3
+    Normal = 4
+
+    TEXT_LOOKUP = {
+        NotApplicable: "--",
+        NotYetSold:    "*",
+        LargeCount:    "有",
+        SoldOut:       "无"
+    }
+
+    REVERSE_TEXT_LOOKUP = {
+        "--": NotApplicable,
+        "*":  NotYetSold,
+        "有": LargeCount,
+        "无": SoldOut
+    }

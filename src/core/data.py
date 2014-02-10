@@ -149,22 +149,14 @@ class TicketCount:
         # I have to wrap their stupidity with this class (which is just as stupid).
         # It just provides easier comparisons against cases such as "有" or "无".
         # (Who the heck thought that was a good idea? Why not just give a number?)
-
-        if count_string == "--":  # Train doesn't have this type of ticket
-            self.status = enums.TicketStatus.NotApplicable
-            self.value = 0
-        elif count_string == "*":  # Tickets are not being sold yet (or none remaining, occasionally)
-            self.status = enums.TicketStatus.NotYetSold
-            self.value = 0
-        elif count_string == "有":  # More than 20 tickets remaining
-            self.status = enums.TicketStatus.LargeCount
+        status = enums.TicketStatus
+        self.status = status.REVERSE_TEXT_LOOKUP.get(count_string, status.Normal)
+        if self.status == status.LargeCount:
             self.value = float("inf")
-        elif count_string == "无":  # No tickets remaining
-            self.status = enums.TicketStatus.SoldOut
-            self.value = 0
-        else:
-            self.status = enums.TicketStatus.Normal
+        elif self.status == status.Normal:
             self.value = int(count_string)
+        else:
+            self.value = 0
 
     def __lt__(self, other):
         if isinstance(other, numbers.Number):
@@ -197,11 +189,4 @@ class TicketCount:
         return not (self == other)
 
     def __str__(self):
-        # Oh god here we go again...
-        status = enums.TicketStatus
-        return {
-            status.NotApplicable: "--",
-            status.NotYetSold: "*",
-            status.LargeCount: "有",
-            status.SoldOut: "无"
-        }.get(self.status, str(self.value))
+        return enums.TicketStatus.TEXT_LOOKUP.get(self.status, str(self.value))
