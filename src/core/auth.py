@@ -28,7 +28,7 @@ class AuthenticationManager:
         self.captcha_solver = captcha_solver
 
     @staticmethod
-    def _get_login_data(username, password, captcha_answer):
+    def __get_login_data(username, password, captcha_answer):
         return {
             "loginUserDTO.user_name": username,
             "userDTO.password": password,
@@ -36,7 +36,7 @@ class AuthenticationManager:
         }
 
     @staticmethod
-    def _get_captcha_request_params(captcha_type):
+    def __get_captcha_request_params(captcha_type):
         if captcha_type == CaptchaType.LOGIN:
             return {
                 "module": "login",
@@ -49,7 +49,7 @@ class AuthenticationManager:
             }
 
     @staticmethod
-    def _get_captcha_check_data(captcha_type, answer):
+    def __get_captcha_check_data(captcha_type, answer):
         if captcha_type == CaptchaType.LOGIN:
             return {
                 "rand": "sjrand",
@@ -61,14 +61,14 @@ class AuthenticationManager:
                 "randCode": answer
             }
 
-    def _check_logged_in(self):
+    def __check_logged_in(self):
         url = "https://kyfw.12306.cn/otn/login/checkUser"
         cookies = self.session_data.get_session_cookies()
         response = requests.post(url, data=None, cookies=cookies, verify=False)
         response.raise_for_status()
         return common.read_json_data(response)["flag"] is True
 
-    def _get_state_vars(self):
+    def __get_state_vars(self):
         # WARNING: VERY HACKY THINGS AHEAD
         # (and I'm not even using regex! >_<)
 
@@ -125,7 +125,7 @@ class AuthenticationManager:
 
         return state_dict
 
-    def _check_captcha_needs_refresh(self, captcha_type):
+    def __check_captcha_needs_refresh(self, captcha_type):
         # This function checks 3 things:
         # 1. We have a captcha image saved
         # 2. The saved captcha image is from our current session
@@ -138,12 +138,6 @@ class AuthenticationManager:
             return True
         return False
 
-    def _solve_captcha_image(self):
-        answer = self.captcha_solver(self.captcha_image.image_data)
-        if answer is not None:
-            logger.debug("Captcha input: " + answer)
-        return answer
-
     def login(self, username, password, captcha_retries=0):
         if self.logged_in:
             logger.debug("Already logged in, if you are switching accounts, log out first!")
@@ -152,7 +146,7 @@ class AuthenticationManager:
         # Sometimes we don't need to get a new captcha,
         # this can happen if the app has already fetched
         # one to display on the login screen.
-        if self._check_captcha_needs_refresh(CaptchaType.LOGIN):
+        if self.__check_captcha_needs_refresh(CaptchaType.LOGIN):
             self.request_captcha_image(CaptchaType.LOGIN)
 
         captcha_answer = None
@@ -161,13 +155,15 @@ class AuthenticationManager:
             # This function is an implementation detail of the client program,
             # which means they are free to return the value however they want.
             # It can be an OCR program, TextBox value, console input, etc.
-            captcha_answer = self._solve_captcha_image()
+            captcha_answer = self.captcha_solver(self.captcha_image.image_data)
 
             # Accept None as a sentinel value to skip remaining retry attempts
             # It is up to the captcha solver function to return this value
             if captcha_answer is None:
                 logger.debug("Captcha aborted, login canceled")
                 return False
+            else:
+                logger.debug("Captcha input: " + captcha_answer)
 
             # Check captcha answer with the server
             # This "validates" our session ID token so we can log in
@@ -184,7 +180,7 @@ class AuthenticationManager:
         logger.debug("Logging in with username {0} and password {1}".format(username, password))
 
         # Submit user credentials to the server
-        data = self._get_login_data(username, password, captcha_answer)
+        data = self.__get_login_data(username, password, captcha_answer)
         url = "https://kyfw.12306.cn/otn/login/loginAysnSuggest"
         cookies = self.session_data.get_session_cookies()
         response = requests.post(url, data, cookies=cookies, verify=False)
@@ -220,7 +216,7 @@ class AuthenticationManager:
         # but requesting a purchase captcha while logged out fails.
 
         url = "https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew.do"
-        params = self._get_captcha_request_params(captcha_type)
+        params = self.__get_captcha_request_params(captcha_type)
         cookies = self.session_data.get_session_cookies()
         response = requests.get(url, params=params, cookies=cookies, verify=False)
         response.raise_for_status()
@@ -234,7 +230,7 @@ class AuthenticationManager:
 
     def check_captcha_answer(self, captcha_type, answer):
         url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"
-        data = self._get_captcha_check_data(captcha_type, answer)
+        data = self.__get_captcha_check_data(captcha_type, answer)
         cookies = self.session_data.get_session_cookies()
         response = requests.post(url, data, cookies=cookies, verify=False)
         response.raise_for_status()
@@ -244,8 +240,8 @@ class AuthenticationManager:
 
     def refresh_login_state(self):
         state_changed = False
-        if self._check_logged_in():
-            username = self._get_state_vars()["sessionInit"]
+        if self.__check_logged_in():
+            username = self.__get_state_vars()["sessionInit"]
             if not self.logged_in or self.username != username:
                 state_changed = True
             self.username = username

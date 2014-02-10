@@ -1,52 +1,54 @@
 # -*- coding: utf-8 -*-
 class TrainType:
-    G = 1       # 高铁
-    D = 2       # 动车
-    Z = 4       # 直达
-    T = 8       # 特快
-    K = 16      # 快速
-    OTHER = 32  # 其他
+    NONE = 0
+    OTHER = 1
+    K = 2
+    T = 4
+    Z = 8
+    D = 16
+    G = 32
     ALL = 63
 
     FULL_NAME_LOOKUP = {
-        G:     "高铁",
-        D:     "动车",
-        Z:     "直达",
-        T:     "特快",
-        K:     "快速",
         OTHER: "其他",
+        K:     "快速",
+        T:     "特快",
+        Z:     "直达",
+        D:     "动车",
+        G:     "高铁"
     }
 
     ABBREVIATION_LOOKUP = {
-        G: "G",
-        D: "D",
-        Z: "Z",
-        T: "T",
+        OTHER: None,
         K: "K",
-        OTHER: None
+        T: "T",
+        Z: "Z",
+        D: "D",
+        G: "G"
     }
 
     REVERSE_ABBREVIATION_LOOKUP = {
-        "G": G,
-        "D": D,
-        "Z": Z,
+        "K": K,
         "T": T,
-        "K": K
+        "Z": Z,
+        "D": D,
+        "G": G
     }
 
 
 class TicketType:
-    OTHER = 1              # 其他
-    NO_SEAT = 2            # 无座
-    HARD_SEAT = 4          # 硬座
-    SOFT_SEAT = 8          # 软座
-    HARD_SLEEPER = 16      # 硬卧
-    SOFT_SLEEPER = 32      # 软卧
-    SOFT_SLEEPER_PRO = 64  # 高级软卧
-    SECOND_CLASS = 128     # 二等座
-    FIRST_CLASS = 256      # 一等座
-    SPECIAL = 512          # 特等座
-    BUSINESS = 1024        # 商务座
+    NONE = 0
+    OTHER = 1
+    NO_SEAT = 2
+    HARD_SEAT = 4
+    SOFT_SEAT = 8
+    HARD_SLEEPER = 16
+    SOFT_SLEEPER = 32
+    SOFT_SLEEPER_PRO = 64
+    SECOND_CLASS = 128
+    FIRST_CLASS = 256
+    SPECIAL = 512
+    BUSINESS = 1024
     ALL = 2047
 
     FULL_NAME_LOOKUP = {
@@ -132,3 +134,11 @@ class TicketType:
         "P":  SPECIAL,
         "A9": BUSINESS
     }
+
+
+class TicketStatus:
+    NotApplicable = 0  # --  -> int(0)
+    NotYetSold = 1     # *   -> int(0)
+    LargeCount = 2     # 有  -> float("inf")
+    SoldOut = 3        # 无  -> int(0)
+    Normal = 4         # int -> int

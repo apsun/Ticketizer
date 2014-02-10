@@ -36,22 +36,44 @@ def get_dict_value_coalesce(value, *keys):
     return get_dict_value_coalesce(value.get(key), *keys)
 
 
+def combine_subdicts(value):
+    combined = {}
+    for k, v in value.items():
+        if isinstance(v, dict):
+            combined.update(combine_subdicts(v))
+        else:
+            combined[k] = v
+    return combined
+
+
 def read_json(response):
     if response.text == "-1":
         raise InvalidRequestException("Invalid query, check your parameters")
     return response.json()
 
 
-def date_to_str(date_obj):
-    return date_obj.strftime("%Y-%m-%d")
+def datetime_to_str(datetime_obj, fmt="%Y-%m-%d %H:%M"):
+    return datetime_obj.strftime(fmt)
 
 
-def str_to_date(date_str):
-    return datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+def str_to_datetime(date_str, time_str, date_fmt="%Y-%m-%d", time_fmt="%H:%M"):
+    return datetime.datetime.strptime(date_str + " " + time_str, date_fmt + " " + time_fmt)
 
 
-def time_to_str(time_obj):
-    return time_obj.strftime("%H:%M")
+def date_to_str(date_obj, fmt="%Y-%m-%d"):
+    return date_obj.strftime(fmt)
+
+
+def str_to_date(date_str, fmt="%Y-%m-%d"):
+    return datetime.datetime.strptime(date_str, fmt).date()
+
+
+def time_to_str(time_obj, fmt="%H:%M"):
+    return time_obj.strftime(fmt)
+
+
+def str_to_time(time_str, fmt="%H:%M"):
+    return datetime.datetime.strptime(time_str, fmt).time()
 
 
 def timedelta_to_str(timedelta_obj, force_seconds=False):

@@ -42,8 +42,8 @@ class TrainSorter:
     
     def __init__(self):
         self.favorites = {}
-        self.sort_method = self.sort_by_type
-        self.reverse_sort = False
+        self.sorters = []
+        self.reverse = False
         
     def set_train_favorited(self, train_name, favorite):
         self.favorites[train_name] = favorite
@@ -55,40 +55,41 @@ class TrainSorter:
         self.set_train_favorited(train_name, not self.get_train_favorited(train_name))
 
     def sort(self, train_list):
-        self.sort_method(train_list, self.reverse_sort)
+        for sorter in self.sorters:
+            sorter(train_list, self.reverse)
+
+    def sort_by_number(self, train_list, reverse):
+        # Note: does NOT take into account the train type!
+        # To sort by the type as well, call sort_by_type after this!
+        type_stripper = lambda x: x.name[1:] if str.isalpha(x.name[0]) else x.name
+        self.__sort_by_key(train_list, lambda x: int(type_stripper(x)), reverse)
+
+    def sort_by_type(self, train_list, reverse):
+        self.__sort_by_key(train_list, lambda x: x.type, reverse)
 
     def sort_by_departure_time(self, train_list, reverse):
-        self._sort_by_key(train_list, lambda x: x.departure_time, reverse)
+        self.__sort_by_key(train_list, lambda x: x.departure_time, reverse)
 
     def sort_by_arrival_time(self, train_list, reverse):
-        self._sort_by_key(train_list, lambda x: x.arrival_time, reverse)
+        self.__sort_by_key(train_list, lambda x: x.arrival_time, reverse)
 
     def sort_by_duration(self, train_list, reverse):
-        self._sort_by_key(train_list, lambda x: x.duration, reverse)
+        self.__sort_by_key(train_list, lambda x: x.duration, reverse)
 
     def sort_by_price(self, train_list, reverse):
         # No idea why anyone would want to sort by maximum price, but whatever...
+        # This method intelligently uses the min/max price of the train's tickets.
+        # That means that doing an ascending sort and reversing is NOT the same as
+        # doing a descending sort! It MIGHT be (if you're lucky), but not guaranteed!
         if reverse:
-            self._sort_by_key(train_list, lambda x: max(x.tickets, lambda t: t.price), True)
+            ticket_price_func = lambda x: 0 if x.price is None else x.price
+            train_price_func = lambda x: max(map(ticket_price_func, x.tickets.values()))
         else:
-            self._sort_by_key(train_list, lambda x: min(x.tickets, lambda t: t.price), False)
+            ticket_price_func = lambda x: float("inf") if x.price is None else x.price
+            train_price_func = lambda x: min(map(ticket_price_func, x.tickets.values()))
+        self.__sort_by_key(train_list, train_price_func, reverse)
 
-    def sort_by_type(self, train_list, reverse):
-        self._sort_by_key(train_list, self._type_key, reverse)
-
-    @staticmethod
-    def _type_key(train):
-        types = enums.TrainType
-        return {
-            types.OTHER: 0,
-            types.K: 1,
-            types.T: 2,
-            types.Z: 3,
-            types.D: 4,
-            types.G: 5
-        }[train.type]
-
-    def _sort_by_key(self, train_list, compare_key, reverse):
+    def __sort_by_key(self, train_list, compare_key, reverse):
         # Sorts the train list using the specified key,
         # keeping "favorite" trains in the front.
         # The sorting algorithm used must be stable for this to work!
@@ -105,15 +106,14 @@ class TrainFilter:
         # Dictionary of train names to blacklist
         # True = ignored, False/no key = OK
         self.blacklist = {}
-        # Departure time filter. Trains that leave
-        # outside this time range will be ignored. (ValueRange)
-        self.departure_time_range = None
-        # Arrival time filter. Trains that arrive
-        # outside this time range will be ignored. (ValueRange)
-        self.arrival_time_range = None
-        # Duration time filter. Trains that have
-        # a travel time outside this range will be ignored. (ValueRange)
-        self.duration_range = None
+        # Departure and arrival time filters. Trains that leave
+        # outside this time range will be ignored. -- ValueRange<datetime.time>
+        # Very important note: These compare __times__, and not __datetimes__!
+        self.departure_time_range = ValueRange()
+        self.arrival_time_range = ValueRange()
+        # Duration time filter. Trains that have a travel time
+        # outside this range will be ignored. -- ValueRange<datetime.timedelta>
+        self.duration_range = ValueRange()
         # Whether to ignore trains that aren't selling tickets yet (bool)
         self.filter_not_sold = False
 
@@ -123,9 +123,15 @@ class TrainFilter:
         self.ticket_type_filter = enums.TicketType.ALL
         # Price filter. Tickets with prices outside
         # this range will be ignored. (ValueRange)
-        self.price_range = None
+        self.price_range = ValueRange()
         # Whether to ignore trains that are completely sold out.
         self.filter_sold_out = False
+
+    def disable_all_train_types(self):
+        self.train_type_filter = enums.TrainType.NONE
+
+    def enable_all_train_types(self):
+        self.train_type_filter = enums.TrainType.ALL
 
     def set_train_type_enabled(self, train_type, enable):
         if enable:
@@ -138,6 +144,9 @@ class TrainFilter:
 
     def toggle_train_type_enabled(self, train_type):
         self.train_type_filter ^= train_type
+
+    def enable_all_trains(self):
+        self.blacklist.clear()
     
     def set_train_enabled(self, train_name, enable):
         self.blacklist[train_name] = not enable
@@ -147,6 +156,12 @@ class TrainFilter:
 
     def toggle_train_enabled(self, train_name):
         self.set_train_enabled(train_name, not self.get_train_enabled(train_name))
+
+    def disable_all_ticket_types(self):
+        self.ticket_type_filter = enums.TicketType.NONE
+
+    def enable_all_ticket_types(self):
+        self.ticket_type_filter = enums.TicketType.ALL
 
     def set_ticket_type_enabled(self, ticket_type, enable):
         if enable:
@@ -161,13 +176,16 @@ class TrainFilter:
         self.ticket_type_filter ^= ticket_type
 
     @staticmethod
-    def filter_tickets(ticket_list, ticket_type_filter, price_range, filter_sold_out):
-        for ticket in ticket_list:
+    def filter_tickets(ticket_dict, ticket_type_filter, price_range, filter_sold_out):
+        not_applicable_filter = enums.TicketStatus.NotApplicable
+        for ticket in ticket_dict.values():
+            if ticket.count.status == not_applicable_filter:
+                continue
             if (ticket_type_filter & ticket.type) != ticket.type:
                 continue
-            if price_range is not None and not price_range.check_value(ticket.price):
-                continue
             if filter_sold_out and ticket.count == 0:
+                continue
+            if price_range is not None and not price_range.check_value(ticket.price):
                 continue
             yield ticket
     
@@ -197,9 +215,9 @@ class TrainFilter:
                 continue
             if filter_not_sold and not train.has_begun_selling:
                 continue
-            if departure_time_range is not None and not departure_time_range.check_value(train.departure_time):
+            if departure_time_range is not None and not departure_time_range.check_value(train.departure_time.time()):
                 continue
-            if arrival_time_range is not None and not arrival_time_range.check_value(train.arrival_time):
+            if arrival_time_range is not None and not arrival_time_range.check_value(train.arrival_time.time()):
                 continue
             if duration_range is not None and not duration_range.check_value(train.duration):
                 continue
@@ -210,7 +228,7 @@ class TrainFilter:
             yield train
 
 
-class TicketQuery:
+class TrainQuery:
 
     def __init__(self):
         # The type of ticket pricing -- normal ("adult") or student
@@ -233,7 +251,7 @@ class TicketQuery:
         self.destination = None
 
     @staticmethod
-    def _get_station_id(station):
+    def __get_station_id(station):
         if isinstance(station, str):
             return station
         if isinstance(station, data.Station):
@@ -241,73 +259,38 @@ class TicketQuery:
         raise TypeError("Station is not a string or a Station object")
 
     @staticmethod
-    def _get_date_str(date):
+    def __get_date_str(date):
         if isinstance(date, str):
             return date
         elif isinstance(date, datetime.date) or isinstance(date, datetime.datetime):
             return common.date_to_str(date)
         raise TypeError("Date is not a string, datetime, or date instance")
 
-    @staticmethod
-    def _parse_train_time(date_string, time_string):
-        return datetime.datetime.strptime(date_string + " " + time_string, "%Y%m%d %H:%M")
-
-    def _get_query_string(self):
+    def __get_query_string(self):
         # WTF! Apparently the order of the params DOES MATTER; if you
         # mess up the order, you get an invalid result.
         # Instead of using the built-in method with dicts,
         # now we have to manually concatenate the query parameters.
-        train_date = self._get_date_str(self.date)
-        from_station = self._get_station_id(self.origin)
-        to_station = self._get_station_id(self.destination)
+        train_date = self.__get_date_str(self.date)
+        from_station = self.__get_station_id(self.origin)
+        to_station = self.__get_station_id(self.destination)
         purpose_codes = self.type
         return "leftTicketDTO.train_date=%s&" \
                "leftTicketDTO.from_station=%s&" \
                "leftTicketDTO.to_station=%s&" \
                "purpose_codes=%s" % (train_date, from_station, to_station, purpose_codes)
 
-    def _parse_query_results(self, train_json):
-        # The format of each item is as follows:
-        # "queryLeftNewDTO": { ... },
-        # "secretStr": "...",
-        # "buttonTextInfo": "..."
-        train_data = train_json["queryLeftNewDTO"]
-        train = data.Train()
-
-        train.name = train_data["station_train_code"]
-        train.id = train_data["train_no"]
-        # Kind of hacky -- we're using the first character of the train's name
-        # TODO: FINISH THIS LIST?
-        train.type = enums.TrainType.REVERSE_ABBREVIATION_LOOKUP.get(train.name[0], enums.TrainType.OTHER)
-        train.departure_station = self.origin
-        train.arrival_station = self.destination
-        train.departure_index = train_data["from_station_no"]
-        train.arrival_index = train_data["to_station_no"]
-        train.has_begun_selling = common.is_true(train_data["canWebBuy"])
-        train.begin_selling_time = datetime.datetime.strptime(train_data["sale_time"], "%H%M").time()
-        train.secret_key = train_json["secretStr"]
-        train.departure_time = self._parse_train_time(train_data["start_train_date"], train_data["start_time"])
-        train.duration = datetime.timedelta(minutes=int(train_data["lishiValue"]))
-        train.arrival_time = train.departure_time + train.duration
-        train.seat_types = train_data["seat_types"]
-        for key, value in enums.TicketType.REVERSE_ABBREVIATION_LOOKUP.items():
-            ticket = data.Ticket()
-            ticket.count = data.TicketCount(train_data[key + "_num"])
-            ticket.type = value
-            train.tickets[value] = ticket
-        return train
-
     def execute(self):
-        url = "https://kyfw.12306.cn/otn/leftTicket/query?" + self._get_query_string()
+        url = "https://kyfw.12306.cn/otn/leftTicket/query?" + self.__get_query_string()
         response = requests.get(url, verify=False)
         response.raise_for_status()
         json_data = common.read_json_data(response)
         logger.debug("Got ticket list from {0} to {1} on {2}".format(
-            self._get_station_id(self.origin),
-            self._get_station_id(self.destination),
-            self._get_date_str(self.date)
+            self.__get_station_id(self.origin),
+            self.__get_station_id(self.destination),
+            self.__get_date_str(self.date)
         ), response)
-        return [self._parse_query_results(train_json) for train_json in json_data]
+        return [data.Train(common.combine_subdicts(train), self.origin, self.destination) for train in json_data]
 
 
 class TicketSearcher:
