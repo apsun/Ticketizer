@@ -56,8 +56,14 @@ def datetime_to_str(datetime_obj, fmt="%Y-%m-%d %H:%M"):
     return datetime_obj.strftime(fmt)
 
 
-def str_to_datetime(date_str, time_str, date_fmt="%Y-%m-%d", time_fmt="%H:%M"):
-    return datetime.datetime.strptime(date_str + " " + time_str, date_fmt + " " + time_fmt)
+def str_to_datetime(date, time, date_fmt="%Y-%m-%d", time_fmt="%H:%M"):
+    # Allow date and time parameters to be date and time objects,
+    # meaning you can use this method to "concatenate" date and time objects.
+    if isinstance(date, datetime.date):
+        date = date.strftime(date_fmt)
+    if isinstance(time, datetime.time):
+        time = time.strftime(time_fmt)
+    return datetime.datetime.strptime(date + " " + time, date_fmt + " " + time_fmt)
 
 
 def date_to_str(date_obj, fmt="%Y-%m-%d"):

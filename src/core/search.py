@@ -100,13 +100,14 @@ class TrainSorter:
 class TrainFilter:
     
     def __init__(self):
-        # Type mask to filter out certain train types.
-        # 0 bit = ignored, 1 bit = OK
+        # Type mask to filter train types
         self.train_type_filter = enums.TrainType.ALL
+        # Type mask to filter ticket types
+        self.ticket_type_filter = enums.TicketType.ALL
         # Dictionary of train names to blacklist
         # True = ignored, False/no key = OK
         self.blacklist = {}
-        # Departure and arrival time filters. Trains that leave
+        # Departure and arrival time filters. Trains that depart/arrive
         # outside this time range will be ignored. -- ValueRange<datetime.time>
         # Very important note: These compare __times__, and not __datetimes__!
         self.departure_time_range = ValueRange()
@@ -114,17 +115,12 @@ class TrainFilter:
         # Duration time filter. Trains that have a travel time
         # outside this range will be ignored. -- ValueRange<datetime.timedelta>
         self.duration_range = ValueRange()
-        # Whether to ignore trains that aren't selling tickets yet (bool)
-        self.filter_not_sold = False
-
-        # Below are ticket filters
-
-        # Type mask to filter ticket types, just like train_type_filter
-        self.ticket_type_filter = enums.TicketType.ALL
         # Price filter. Tickets with prices outside
         # this range will be ignored. (ValueRange)
         self.price_range = ValueRange()
-        # Whether to ignore trains that are completely sold out.
+        # Whether to ignore trains that aren't selling tickets yet
+        self.filter_not_yet_sold = False
+        # Whether to ignore trains that are completely sold out
         self.filter_sold_out = False
 
     def disable_all_train_types(self):
@@ -175,57 +171,38 @@ class TrainFilter:
     def toggle_ticket_type_enabled(self, ticket_type):
         self.ticket_type_filter ^= ticket_type
 
-    @staticmethod
-    def filter_tickets(ticket_dict, ticket_type_filter, price_range, filter_sold_out):
-        not_applicable_filter = enums.TicketStatus.NotApplicable
+    def __filter_tickets(self, ticket_dict):
         for ticket in ticket_dict.values():
-            if ticket.count.status == not_applicable_filter:
+            if ticket.count.status == enums.TicketStatus.NotApplicable:
                 continue
-            if (ticket_type_filter & ticket.type) != ticket.type:
+            if self.filter_sold_out and ticket.count.status == enums.TicketStatus.SoldOut:
                 continue
-            if filter_sold_out and ticket.count == 0:
+            if self.filter_not_yet_sold and ticket.count.status == enums.TicketStatus.NotYetSold:
                 continue
-            if price_range is not None and not price_range.check_value(ticket.price):
+            if (self.ticket_type_filter & ticket.type) != ticket.type:
+                continue
+            if not self.price_range.check_value(ticket.price):
                 continue
             yield ticket
     
-    def filter(self, train_list):
-        # Optimized for speed when filtering a large number of trains.
-        # Use this when working with lists of trains instead of calling 
-        # individual check functions one at a time.
-
-        # Train filters
-        train_type_filter = self.train_type_filter
-        blacklist = self.blacklist
-        filter_not_sold = self.filter_not_sold
-        departure_time_range = self.departure_time_range
-        arrival_time_range = self.arrival_time_range
-        duration_range = self.duration_range
-
-        # Ticket filters
-        ticket_type_filter = self.ticket_type_filter
-        price_range = self.price_range
-        filter_sold_out = self.filter_sold_out
-        ticket_filter = self.filter_tickets
-
+    def __filter_trains(self, train_list):
         for train in train_list:
-            if (train_type_filter & train.type) != train.type:
+            if (self.train_type_filter & train.type) != train.type:
                 continue
-            if blacklist.get(train.name, False):
+            if self.blacklist.get(train.name, False):
                 continue
-            if filter_not_sold and not train.has_begun_selling:
+            if not self.departure_time_range.check_value(train.departure_time.time()):
                 continue
-            if departure_time_range is not None and not departure_time_range.check_value(train.departure_time.time()):
+            if not self.arrival_time_range.check_value(train.arrival_time.time()):
                 continue
-            if arrival_time_range is not None and not arrival_time_range.check_value(train.arrival_time.time()):
+            if not self.duration_range.check_value(train.duration):
                 continue
-            if duration_range is not None and not duration_range.check_value(train.duration):
-                continue
-            # Basically, if there are no tickets that meet our criterion,
-            # we just ignore the train completely.
-            if len(list(ticket_filter(train.tickets, ticket_type_filter, price_range, filter_sold_out))) == 0:
+            if next(self.__filter_tickets(train.tickets), None) is None:
                 continue
             yield train
+
+    def filter(self, train_list):
+        return list(self.__filter_trains(train_list))
 
 
 class TrainQuery:
@@ -243,37 +220,54 @@ class TrainQuery:
         # The departure date -- can be datetime.datetime, datetime.date, or str
         # (If using str, the format must be YYYY-mm-dd)
         self.date = None
-        # The origin station -- can be data.Station or str
+        # The departure station -- can be data.Station or str
         # (If using str, use the station's 3-letter ID)
-        self.origin = None
+        self.departure_station = None
         # The destination station -- can be data.Station or str
         # (If using str, use the station's 3-letter ID)
-        self.destination = None
+        self.destination_station = None
 
-    @staticmethod
-    def __get_station_id(station):
+    def __get_departure_id(self):
+        station = self.departure_station
         if isinstance(station, str):
+            logger.warning("Using str for departure station parameter")
             return station
         if isinstance(station, data.Station):
             return station.id
-        raise TypeError("Station is not a string or a Station object")
+        if station is None:
+            raise ValueError("No departure station specified")
+        raise TypeError("Departure station is not a string or Station object")
 
-    @staticmethod
-    def __get_date_str(date):
+    def __get_destination_id(self):
+        station = self.destination_station
+        if isinstance(station, str):
+            logger.warning("Using str for destination station parameter")
+            return station
+        if isinstance(station, data.Station):
+            return station.id
+        if station is None:
+            raise ValueError("No destination station specified")
+        raise TypeError("Destination station is not a string or Station object")
+
+    def __get_date_str(self):
+        date = self.date
         if isinstance(date, str):
+            logger.warning("Using str for train date parameter")
             return date
         elif isinstance(date, datetime.date) or isinstance(date, datetime.datetime):
             return common.date_to_str(date)
-        raise TypeError("Date is not a string, datetime, or date instance")
+        if date is None:
+            raise ValueError("No train date specified")
+        raise TypeError("Train date is not a string, datetime, or date instance")
 
     def __get_query_string(self):
         # WTF! Apparently the order of the params DOES MATTER; if you
         # mess up the order, you get an invalid result.
         # Instead of using the built-in method with dicts,
         # now we have to manually concatenate the query parameters.
-        train_date = self.__get_date_str(self.date)
-        from_station = self.__get_station_id(self.origin)
-        to_station = self.__get_station_id(self.destination)
+        train_date = self.__get_date_str()
+        from_station = self.__get_departure_id()
+        to_station = self.__get_destination_id()
         purpose_codes = self.type
         return "leftTicketDTO.train_date=%s&" \
                "leftTicketDTO.from_station=%s&" \
@@ -286,11 +280,15 @@ class TrainQuery:
         response.raise_for_status()
         json_data = common.read_json_data(response)
         logger.debug("Got ticket list from {0} to {1} on {2}".format(
-            self.__get_station_id(self.origin),
-            self.__get_station_id(self.destination),
-            self.__get_date_str(self.date)
+            self.__get_departure_id(),
+            self.__get_destination_id(),
+            self.__get_date_str()
         ), response)
-        return [data.Train(common.combine_subdicts(train), self.origin, self.destination) for train in json_data]
+        train_list = []
+        for train_data in json_data:
+            combined_data = common.combine_subdicts(train_data)
+            train_list.append(data.Train(combined_data, self.departure_station, self.destination_station))
+        return train_list
 
 
 class TicketSearcher:
@@ -302,7 +300,7 @@ class TicketSearcher:
 
     def filter_by_train(self, train_list):
         if self.filter is not None:
-            return list(self.filter.filter(train_list))
+            return self.filter.filter(train_list)
         else:
             return train_list
 

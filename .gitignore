@@ -3,3 +3,4 @@ ui/
 *.pyc
 captcha.jpg
 main.py
+run_cli.bat

@@ -9,7 +9,7 @@ from . import enums
 
 class Train:
 
-    def __init__(self, data_dict, origin_station, destination_station):
+    def __init__(self, data_dict, departure_station, destination_station):
         # The user-friendly name of the train (e.g. T546)
         self.name = data_dict["station_train_code"]
         # The unique internal identifier of the train (e.g. 5l000D220200)
@@ -17,7 +17,7 @@ class Train:
         # The type of the train (from TrainType enum)
         self.type = enums.TrainType.REVERSE_ABBREVIATION_LOOKUP.get(self.name[0], enums.TrainType.OTHER)
         # A station object that represents the departure (from) station
-        self.origin_station = origin_station
+        self.departure_station = departure_station
         # A station object that represents the arrival (to) station
         self.destination_station = destination_station
         # The departure time of the train (datetime.datetime)
@@ -27,19 +27,14 @@ class Train:
         # The arrival time of the train (datetime.datetime)
         self.arrival_time = self.departure_time + self.duration
         # The 1-based index of the departure station in the train's overall station list
-        self.origin_index = data_dict["from_station_no"]
+        self.departure_index = data_dict["from_station_no"]
         # The 1-based index of the arrival station in the train's overall station list
         self.destination_index = data_dict["to_station_no"]
-        # Whether it has passed the selling time for this train.
-        # TODO: This is false when no tickets are left. What do?
-        self.has_begun_selling = common.is_true(data_dict["canWebBuy"])
-        # If self.has_begun_selling is false, holds the time (datetime.time)
-        # at which tickets for this train will begin selling.
-        self.begin_selling_time = common.str_to_time(data_dict["sale_time"], "%H%M")
-        # Some stupid string that shows the type of seats this train has.
+        # Whether we can buy any tickets for this train
+        self.can_buy = common.is_true(data_dict["canWebBuy"])
         # Used for querying ticket prices.
         self.seat_types = data_dict["seat_types"]
-        # A string that is used when purchasing the ticket
+        # Used for purchasing tickets.
         self.secret_key = data_dict["secretStr"]
         # A dictionary mapping each ticket type to a Ticket object.
         # Even if the train does not have that ticket type,
@@ -51,16 +46,29 @@ class Train:
             self.tickets[value] = Ticket(self, ticket_type, ticket_count)
         # A flag to see whether we have already fetched ticket prices.
         self.ticket_prices_fetched = False
+        # Set the ticket selling time
+        if not self.can_buy:
+            not_yet_sold = False
+            for ticket in self.tickets.values():
+                if ticket.count.status == enums.TicketStatus.NotYetSold:
+                    not_yet_sold = True
+                    break
+            if not_yet_sold:
+                # TODO: Is this even correct?
+                begin_date = data_dict["control_train_day"]
+                # I sure hope this website doesn't last until 2030-03-03...
+                if begin_date == "20300303":
+                    begin_date = datetime.datetime.now().date()
+                self.begin_selling_time = common.str_to_datetime(begin_date, data_dict["sale_time"], "%Y%m%d", "%H%M")
 
     def __get_price_query_params(self):
         # Once again, we have a case where the order of params matters.
-        # I hate you so much I want to rearrange these params up your rectum.
         return "train_no=%s&" \
                "from_station_no=%s&" \
                "to_station_no=%s&" \
                "seat_types=%s&" \
                "train_date=%s" % (self.id,
-                                  self.origin_index,
+                                  self.departure_index,
                                   self.destination_index,
                                   self.seat_types,
                                   common.date_to_str(self.departure_time))
@@ -108,11 +116,10 @@ class Station:
         url = "https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"
         response = requests.get(url, verify=False)
         response.raise_for_status()
-        logger.debug("Fetched station list (status code: " + str(response.status_code) + ")")
         split = response.text.split("'")
         assert len(split) == 3
-        data_list = split[1].split("@")[1:]
-        return [Station(item.split("|")) for item in data_list]
+        logger.debug("Fetched station list (status code: " + str(response.status_code) + ")")
+        return [Station(item.split("|")) for item in split[1].split("@")[1:]]
 
 
 class Ticket:
