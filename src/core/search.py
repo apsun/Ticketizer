@@ -23,6 +23,9 @@ class ValueRange:
         self.lower = lower
         self.upper = upper
 
+    def has_check(self):
+        return self.lower is not None or self.lower is not None
+
     def check_value(self, value):
         lower = self.lower
         upper = self.upper
@@ -181,7 +184,8 @@ class TrainFilter:
                 continue
             if (self.ticket_type_filter & ticket.type) != ticket.type:
                 continue
-            if not self.price_range.check_value(ticket.price):
+            # Try to lazily evaluate ticket price to save a lot of network requests
+            if self.price_range.has_check() and not self.price_range.check_value(ticket.price):
                 continue
             yield ticket
     
@@ -217,62 +221,19 @@ class TrainQuery:
         # to make testing easier (don't need to instantiate
         # any complex objects, just use the date/ID directly).
 
-        # The departure date -- can be datetime.datetime, datetime.date, or str
-        # (If using str, the format must be YYYY-mm-dd)
+        # The departure date -- datetime.date
         self.date = None
-        # The departure station -- can be data.Station or str
-        # (If using str, use the station's 3-letter ID)
+        # The departure station -- data.Station
         self.departure_station = None
-        # The destination station -- can be data.Station or str
-        # (If using str, use the station's 3-letter ID)
+        # The destination station -- data.Station
         self.destination_station = None
 
-    def __get_departure_id(self):
-        station = self.departure_station
-        if isinstance(station, str):
-            logger.warning("Using str for departure station parameter")
-            return station
-        if isinstance(station, data.Station):
-            return station.id
-        if station is None:
-            raise ValueError("No departure station specified")
-        raise TypeError("Departure station is not a string or Station object")
-
-    def __get_destination_id(self):
-        station = self.destination_station
-        if isinstance(station, str):
-            logger.warning("Using str for destination station parameter")
-            return station
-        if isinstance(station, data.Station):
-            return station.id
-        if station is None:
-            raise ValueError("No destination station specified")
-        raise TypeError("Destination station is not a string or Station object")
-
-    def __get_date_str(self):
-        date = self.date
-        if isinstance(date, str):
-            logger.warning("Using str for train date parameter")
-            return date
-        elif isinstance(date, datetime.date) or isinstance(date, datetime.datetime):
-            return common.date_to_str(date)
-        if date is None:
-            raise ValueError("No train date specified")
-        raise TypeError("Train date is not a string, datetime, or date instance")
-
     def __get_query_string(self):
-        # WTF! Apparently the order of the params DOES MATTER; if you
-        # mess up the order, you get an invalid result.
-        # Instead of using the built-in method with dicts,
-        # now we have to manually concatenate the query parameters.
-        train_date = self.__get_date_str()
-        from_station = self.__get_departure_id()
-        to_station = self.__get_destination_id()
-        purpose_codes = self.type
-        return "leftTicketDTO.train_date=%s&" \
-               "leftTicketDTO.from_station=%s&" \
-               "leftTicketDTO.to_station=%s&" \
-               "purpose_codes=%s" % (train_date, from_station, to_station, purpose_codes)
+        return common.get_ordered_query_params(
+            "leftTicketDTO.train_date", common.date_to_str(self.date),
+            "leftTicketDTO.from_station", self.departure_station.id,
+            "leftTicketDTO.to_station", self.destination_station.id,
+            "purpose_codes", self.type)
 
     def execute(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/query?" + self.__get_query_string()
@@ -280,9 +241,9 @@ class TrainQuery:
         response.raise_for_status()
         json_data = common.read_json_data(response)
         logger.debug("Got ticket list from {0} to {1} on {2}".format(
-            self.__get_departure_id(),
-            self.__get_destination_id(),
-            self.__get_date_str()
+            self.date,
+            self.departure_station,
+            self.destination_station
         ), response)
         train_list = []
         for train_data in json_data:

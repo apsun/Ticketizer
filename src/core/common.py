@@ -27,12 +27,22 @@ def read_json_data(response):
     return json_data
 
 
+def get_ordered_query_params(*args):
+    # This function only exists because 12306 is retarded.
+    keys = args[::2]
+    values = args[1::2]
+    return "&".join("%s=%s" % pair for pair in zip(keys, values))
+
+
 def get_dict_value_coalesce(value, *keys):
-    if value is None:  # If the dictionary is null, coalesce the result to null
+    # If the dictionary is None, coalesce the result to None
+    if value is None:
         return None
-    if len(keys) == 0:  # No more keys to check, return the current result
+    # If there are no more keys to check, return the current result
+    if len(keys) == 0:
         return value
-    key, keys = keys[0], keys[1:]  # Pop first key from the list
+    # Pop first key from the list, using that as the next dictionary key
+    key, *keys = keys
     return get_dict_value_coalesce(value.get(key), *keys)
 
 
@@ -46,8 +56,41 @@ def combine_subdicts(value):
     return combined
 
 
+def get_subpath_pairs(station_path):
+    # Returns all paths between the first and last items
+    # in the list, in the structure list<list<tuple<,>>> like this:
+    # [0] -> list        -- list of sub-path travel nodes
+    #    [0] -> tuple
+    #       [0] -> start -- starting point of sub-path
+    #       [1] -> end   -- ending point of sub-path
+    #    [1] -> tuple
+    #       [0] -> start
+    #       [1] -> end
+    #    ....
+    # ....
+    # Given a list [1, 2, 3, 4], the return value will be:
+    # [[(1,4)], [(1,2),(2,4)], [(1,3),(3,4)], [(1,2),(2,3),(3,4)]
+    def sublists(x):
+        if len(x) == 1:
+            return [x]
+        # Split list into [0, 1, ..., n-2][n-1] parts,
+        # then recurse into the first part
+        last = [x.pop()]
+        left = sublists(x)
+        # Left and right trees are equal so we can just copy the left one
+        # Also append the [n-1]th element to each item
+        right = [sub[:] + last for sub in left]
+        return left + right
+
+    def pairs(x):
+        return [(x[i], x[i+1]) for i in range(len(x)-1)]
+
+    last_value = [station_path.pop()]
+    return [pairs(sublist + last_value) for sublist in sublists(station_path)]
+
+
 def read_json(response):
-    if response.text == "-1":
+    if response.text == "-1":  # For 12306, "-1" means invalid query
         raise InvalidRequestException("Invalid query, check your parameters")
     return response.json()
 
@@ -57,13 +100,13 @@ def datetime_to_str(datetime_obj, fmt="%Y-%m-%d %H:%M"):
 
 
 def str_to_datetime(date, time, date_fmt="%Y-%m-%d", time_fmt="%H:%M"):
-    # Allow date and time parameters to be date and time objects,
+    # Allows date and time parameters to be date and time objects respectively,
     # meaning you can use this method to "concatenate" date and time objects.
-    if isinstance(date, datetime.date):
-        date = date.strftime(date_fmt)
-    if isinstance(time, datetime.time):
-        time = time.strftime(time_fmt)
-    return datetime.datetime.strptime(date + " " + time, date_fmt + " " + time_fmt)
+    if isinstance(date, str):
+        date = datetime.datetime.strptime(date, date_fmt).date()
+    if isinstance(time, str):
+        time = datetime.datetime.strptime(time, time_fmt).time()
+    return datetime.datetime.combine(date, time)
 
 
 def date_to_str(date_obj, fmt="%Y-%m-%d"):

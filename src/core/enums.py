@@ -10,7 +10,6 @@ class TrainType:
     ALL = 63
 
     FULL_NAME_LOOKUP = {
-        OTHER: "其他",
         K:     "快速",
         T:     "特快",
         Z:     "直达",
@@ -19,7 +18,6 @@ class TrainType:
     }
 
     ABBREVIATION_LOOKUP = {
-        OTHER: None,
         K: "K",
         T: "T",
         Z: "Z",
