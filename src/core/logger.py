@@ -10,7 +10,6 @@ class LogType:
 
 
 def log(log_type, msg):
-
     # Whether to print the log verbosity
     enable_type = True
     # Whether to print the current time

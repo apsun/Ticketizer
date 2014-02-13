@@ -10,11 +10,11 @@ class TrainType:
     ALL = 63
 
     FULL_NAME_LOOKUP = {
-        K:     "快速",
-        T:     "特快",
-        Z:     "直达",
-        D:     "动车",
-        G:     "高铁"
+        K: "快速",
+        T: "特快",
+        Z: "直达",
+        D: "动车",
+        G: "高铁"
     }
 
     ABBREVIATION_LOOKUP = {

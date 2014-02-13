@@ -1,22 +1,5 @@
 import datetime
-
-
-class InvalidRequestException(Exception):
-    def __init__(self, messages):
-        if isinstance(messages, str):
-            self.messages = [messages]
-        elif isinstance(messages, list):
-            self.messages = messages
-        else:
-            raise TypeError()
-
-    def __str__(self):
-        messages = self.messages
-        if messages is None or len(messages) == 0:
-            reason_str = "reason unknown"
-        else:
-            reason_str = "reason: " + ";".join(messages)
-        return "Request failed, " + reason_str
+from core.errors import InvalidRequestException
 
 
 def read_json_data(response):
@@ -54,39 +37,6 @@ def combine_subdicts(value):
         else:
             combined[k] = v
     return combined
-
-
-def get_subpath_pairs(station_path):
-    # Returns all paths between the first and last items
-    # in the list, in the structure list<list<tuple<,>>> like this:
-    # [0] -> list        -- list of sub-path travel nodes
-    #    [0] -> tuple
-    #       [0] -> start -- starting point of sub-path
-    #       [1] -> end   -- ending point of sub-path
-    #    [1] -> tuple
-    #       [0] -> start
-    #       [1] -> end
-    #    ....
-    # ....
-    # Given a list [1, 2, 3, 4], the return value will be:
-    # [[(1,4)], [(1,2),(2,4)], [(1,3),(3,4)], [(1,2),(2,3),(3,4)]
-    def sublists(x):
-        if len(x) == 1:
-            return [x]
-        # Split list into [0, 1, ..., n-2][n-1] parts,
-        # then recurse into the first part
-        last = [x.pop()]
-        left = sublists(x)
-        # Left and right trees are equal so we can just copy the left one
-        # Also append the [n-1]th element to each item
-        right = [sub[:] + last for sub in left]
-        return left + right
-
-    def pairs(x):
-        return [(x[i], x[i+1]) for i in range(len(x)-1)]
-
-    last_value = [station_path.pop()]
-    return [pairs(sublist + last_value) for sublist in sublists(station_path)]
 
 
 def read_json(response):
