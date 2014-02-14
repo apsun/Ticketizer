@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from numbers import Number
-from core.enums import TicketStatus
+from core.enums import TicketStatus, TicketType
 
 
 class TicketList:
@@ -47,9 +47,16 @@ class Ticket:
     def status(self):
         return self.count.status
 
+    def __str__(self):
+        return "{0} -> {1} (status: {2}, count: {3})".format(
+            self.train.name,
+            TicketType.FULL_NAME_LOOKUP[self.type],
+            TicketStatus.TEXT_LOOKUP[self.status],
+            self.count
+        )
+
 
 class TicketCount:
-
     def __init__(self, count_string):
         # Since all the workers at 12306 have a combined IQ of "banana",
         # I have to wrap their stupidity with this class (which is just as stupid).

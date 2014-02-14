@@ -95,3 +95,11 @@ class Train:
             self.tickets[ticket_type].price = float(value[1:])
         self.ticket_prices_fetched = True
         logger.debug("Fetched ticket prices for train " + self.name, response)
+
+    def __str__(self):
+        return "{0} (ID: {1}) from {2} to {3}".format(
+            self.name,
+            self.id,
+            self.departure_station.name,
+            self.destination_station.name
+        )

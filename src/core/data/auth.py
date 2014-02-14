@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import itertools
 import requests
 from core import logger, common
 
@@ -146,7 +147,7 @@ class SessionManager:
         # parse the string the hacky way. Honestly though,
         # I doubt the internal code to build these vars
         # is any better than this, knowing 12306...
-        state_js_lines = html[state_begin:state_end].splitlines()[1:-1]
+        state_js_lines = common.islice(html[state_begin:state_end].splitlines(), start=1)
         state_dict = {}
         for line in state_js_lines:
             var_name_index = line.index("var ") + len("var ")

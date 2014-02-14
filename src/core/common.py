@@ -1,20 +1,33 @@
 import datetime
-from core.errors import InvalidRequestException
+import urllib.parse
+import itertools
+from core.errors import InvalidRequestError
 
 
 def read_json_data(response):
     json = read_json(response)
     json_data = json.get("data")
     if json_data is None:
-        raise InvalidRequestException(json.get("messages"))
+        raise InvalidRequestError(json.get("messages"))
     return json_data
+
+
+def islice(iterable, start=None, end=None, step=None):
+    # For some reason PyCharm thinks islice's constructor
+    # has the signature __init__(iterable, end). This avoids
+    # a warning every time you use itertools.islice.
+    # noinspection PyArgumentList
+    return itertools.islice(iterable, start, end, step)
 
 
 def get_ordered_query_params(*args):
     # This function only exists because 12306 is retarded.
-    keys = args[::2]
-    values = args[1::2]
-    return "&".join("%s=%s" % pair for pair in zip(keys, values))
+    keys = islice(args, start=0, step=2)
+    values = islice(args, start=1, step=2)
+    # urlencode properly handles special characters, even
+    # through there probably won't be any...
+    return urllib.parse.urlencode(list(zip(keys, values)))
+    # return "&".join("%s=%s" % pair for pair in zip(keys, values))
 
 
 def get_dict_value_coalesce(value, *keys):
@@ -29,11 +42,11 @@ def get_dict_value_coalesce(value, *keys):
     return get_dict_value_coalesce(value.get(key), *keys)
 
 
-def combine_subdicts(value):
+def flatten_dict(value):
     combined = {}
     for k, v in value.items():
         if isinstance(v, dict):
-            combined.update(combine_subdicts(v))
+            combined.update(flatten_dict(v))
         else:
             combined[k] = v
     return combined
@@ -41,7 +54,7 @@ def combine_subdicts(value):
 
 def read_json(response):
     if response.text == "-1":  # For 12306, "-1" means invalid query
-        raise InvalidRequestException("Invalid query, check your parameters")
+        raise InvalidRequestError("Invalid query, check your parameters")
     return response.json()
 
 

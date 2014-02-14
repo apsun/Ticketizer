@@ -1,11 +1,6 @@
 # -*- coding: utf-8 -*-
 from core.enums import TrainType, TicketType, TicketStatus
-from core.processing.containers import BitFlags, ToggleList, ValueRange
-
-
-class PathFilter:
-    # Filter for combined train trips
-    pass
+from core.processing.containers import BitFlags, FlagSet, ValueRange
 
 
 class TrainFilter:
@@ -13,7 +8,7 @@ class TrainFilter:
         # Filter to ignore certain train types
         self.type_filter = BitFlags(TrainType.ALL, TrainType.ALL, TrainType.NONE)
         # Add train names (e.g. "T110") to this list to ignore them
-        self.blacklist = ToggleList()
+        self.blacklist = FlagSet()
         # Departure and arrival time filters. Trains that depart/arrive
         # outside this time range will be ignored. -- ValueRange<datetime.time>
         # TODO: Change this to compare datetime.datetime for overnight trains?

@@ -16,21 +16,21 @@ class TicketDirection:
 
 class TrainQuery:
     def __init__(self, station_list):
-        # The type of ticket pricing -- normal ("adult") or student
-        self.type = TicketPricing.NORMAL
-        # The trip type -- one-direction or round-trip
-        self.direction = TicketDirection.ONE_WAY
         # Station list, required for train initialization
         self.station_list = station_list
+        # The type of ticket pricing -- normal ("adult") or student
+        self.pricing = TicketPricing.NORMAL
+        # The trip type -- one-direction or round-trip
+        self.direction = TicketDirection.ONE_WAY
         # The departure date -- datetime.date (or a str in the format YYYY-mm-dd)
         self.date = None
         # The departure station -- data.Station (or use the station ID)
         self.departure_station = None
         # The destination station -- data.Station (or use the station ID)
         self.destination_station = None
-        # Since 12306 likes to have a fuzzy search feature to
-        # get all stations in the same area, you can disable it here
-        self.force_exact_station = True
+        # Optionally disable the "fuzzy station search" feature
+        self.exact_departure_station = False
+        self.exact_destination_station = False
 
     def __ensure_param_types(self):
         if isinstance(self.date, str):
@@ -48,7 +48,7 @@ class TrainQuery:
             "leftTicketDTO.train_date", common.date_to_str(self.date),
             "leftTicketDTO.from_station", self.departure_station.id,
             "leftTicketDTO.to_station", self.destination_station.id,
-            "purpose_codes", self.type)
+            "purpose_codes", self.pricing)
 
     def execute(self):
         self.__ensure_param_types()
@@ -63,14 +63,13 @@ class TrainQuery:
         ), response)
         train_list = []
         for train_data in json_data:
-            combined_data = common.combine_subdicts(train_data)
+            combined_data = common.flatten_dict(train_data)
             departure_station = self.station_list.get_by_id(combined_data["from_station_telecode"])
             destination_station = self.station_list.get_by_id(combined_data["to_station_telecode"])
-            if self.force_exact_station:
-                if departure_station != self.departure_station:
-                    continue
-                if destination_station != self.destination_station:
-                    continue
+            if self.exact_departure_station and departure_station != self.departure_station:
+                continue
+            if self.exact_destination_station and destination_station != self.destination_station:
+                continue
             train_list.append(Train(combined_data, departure_station, destination_station))
         return train_list
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 
-class InvalidRequestException(Exception):
+class InvalidRequestError(Exception):
     def __init__(self, messages):
         if isinstance(messages, str):
             self.messages = [messages]

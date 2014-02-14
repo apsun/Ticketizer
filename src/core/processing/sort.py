@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
-from core.processing.containers import ToggleList
+from core.processing.containers import FlagSet
 
 
 class TrainSorter:
     def __init__(self):
-        self.favorites = ToggleList()
+        self.favorites = FlagSet()
         self.sorters = []
         self.reverse = False
 

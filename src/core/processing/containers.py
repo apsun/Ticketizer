@@ -51,7 +51,7 @@ class BitFlags:
         self.__flags = self.__none
 
 
-class ToggleList:
+class FlagSet:
     def __init__(self):
         self.__list = {}
 
