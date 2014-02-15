@@ -21,3 +21,7 @@ class InvalidRequestError(Exception):
 
 class StopPathSearch(Exception):
     pass
+
+
+class StopCaptchaRetry(Exception):
+    pass

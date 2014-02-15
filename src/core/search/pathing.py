@@ -180,8 +180,7 @@ class PathFinder:
         # the target destination station!
         if len(next_train_dict) == 0:
             logger.debug("No trains found in sub-path from {0} to {1}".format(
-                departure_station.name, last_station.name
-            ))
+                departure_station.name, last_station.name))
             # Let the client handle no-result cases
             # return None
 
@@ -190,9 +189,9 @@ class PathFinder:
             selected_train = self.path_selector(list(next_train_dict.keys()))
 
             # Accept None as a sentinel value to "undo" to the higher level
-            # If the client wants to exit the search, raise an exception
-            # (StopPathSearch) in the path selector function and catch it
-            # in the call to get_paths()
+            # To prematurely exit the search, simply raise StopPathSearch
+            # in the path selector function; get_path() will catch this
+            # exception and return None to the caller.
             if selected_train is None:
                 return None
 
@@ -219,16 +218,15 @@ class PathFinder:
             if next_search is not None:
                 return next_search
 
-            logger.debug("Undoing from " + query.departure_station.name + " to " + departure_station.name)
+            logger.debug("Undoing from {0} to {1}".format(
+                query.departure_station.name, departure_station.name))
 
     def get_path(self, train):
         query = TrainQuery(self.__station_list)
         query.pricing = self.pricing
         query.direction = TicketDirection.ONE_WAY
         substations = self.__get_substations(train)
-        result = self.__get_path_recursive([train], substations, query, True)
-        # The client is probably handling StopPathSearch anyways,
-        # so make "undo"ing from the first level raise it as well.
-        if result is None:
-            raise StopPathSearch()
-        return result
+        try:
+            return self.__get_path_recursive([train], substations, query, True)
+        except StopPathSearch:
+            return None

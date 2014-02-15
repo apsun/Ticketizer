@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import requests
+from core.errors import StopCaptchaRetry
 from core import logger, common
 
 
@@ -183,7 +184,7 @@ class SessionManager:
             return True
         return False
 
-    def login(self, username, password, captcha_retries=0):
+    def login(self, username, password):
         if self.logged_in:
             logger.debug("Already logged in, if you are switching accounts, log out first!")
             return True
@@ -200,24 +201,28 @@ class SessionManager:
             # This function is an implementation detail of the client program,
             # which means they are free to return the value however they want.
             # It can be an OCR program, TextBox value, console input, etc.
-            captcha_answer = self.captcha_solver(self.captcha_image.image_data)
-
-            # Accept None as a sentinel value to skip remaining retry attempts
-            # It is up to the captcha solver function to return this value
-            if captcha_answer is None:
-                logger.debug("Captcha aborted, login canceled")
+            try:
+                captcha_answer = self.captcha_solver(self.captcha_image.image_data)
+            except StopCaptchaRetry:
+                # If the solver function throws StopCaptchaRetry, we abort the
+                # login and return immediately
+                logger.debug("Captcha aborted by user, login canceled")
                 return False
-            else:
-                logger.debug("Captcha input: " + captcha_answer)
+
+            # Accept None as a sentinel value to change the captcha image.
+            # Arguably, this is useless, since we could just return and have
+            # the client re-call the login function.
+            if captcha_answer is None:
+                logger.debug("User requested captcha refresh, fetching new image")
+                self.request_captcha_image(CaptchaType.LOGIN)
+                continue
+
+            logger.debug("Captcha input: " + captcha_answer)
 
             # Check captcha answer with the server
             # This "validates" our session ID token so we can log in
             if not self.check_captcha_answer(CaptchaType.LOGIN, captcha_answer):
-                if captcha_retries <= 0:
-                    logger.debug("Incorrect captcha answer, login failed")
-                    return False
-                logger.debug("Incorrect captcha answer, retrying " + str(captcha_retries) + " more time(s)")
-                captcha_retries -= 1
+                logger.debug("Incorrect captcha answer, retrying")
             else:
                 break
 
