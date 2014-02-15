@@ -17,3 +17,7 @@ class InvalidRequestError(Exception):
         else:
             reason_str = "reason: " + ";".join(messages)
         return "Request failed, " + reason_str
+
+
+class StopPathSearch(Exception):
+    pass

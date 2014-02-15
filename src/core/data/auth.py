@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import itertools
 import requests
 from core import logger, common
 

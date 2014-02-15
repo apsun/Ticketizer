@@ -37,30 +37,39 @@ class Train:
         # A dictionary mapping each ticket type to a Ticket object.
         # Even if the train does not have that ticket type,
         # an object should still be created for it.
-        self.tickets = TicketList(self.__get_ticket_dict(data_dict))
+        self.tickets = TicketList(self.__get_ticket_dict(self, data_dict))
         # A flag to see whether we have already fetched ticket prices.
         self.ticket_prices_fetched = False
         # Set the ticket selling time
-        self.begin_selling_time = self.__get_begin_selling_time(data_dict)
+        self.begin_selling_time = self.__get_begin_selling_time(self.tickets, data_dict)
 
-    def __get_ticket_dict(self, data_dict):
+    @staticmethod
+    def __get_ticket_dict(train, data_dict):
         tickets = {}
         for key, value in TicketType.REVERSE_ABBREVIATION_LOOKUP.items():
             ticket_count = TicketCount(data_dict[key + "_num"])
-            tickets[value] = Ticket(self, value, ticket_count)
+            tickets[value] = Ticket(train, value, ticket_count)
         return tickets
 
-    def __get_begin_selling_time(self, data_dict):
-        if self.can_buy:
-            return None
+    @staticmethod
+    def __get_begin_selling_time(tickets, data_dict):
+        # For some reason, different ticket categories can
+        # begin selling at different times. Thus, even if we
+        # can buy some tickets, some might still be unavailable.
+        # This "transition" usually lasts around 5 minutes.
+        # if self.can_buy:
+        #     return None
+
+        # Either the tickets are all sold out or some are
+        # not yet sold. Make sure this is the latter case.
         not_yet_sold = False
-        for ticket in self.tickets:
+        for ticket in tickets:
             if ticket.count.status == TicketStatus.NotYetSold:
                 not_yet_sold = True
                 break
         if not not_yet_sold:
             return None
-        # TODO: Is this even correct?
+
         begin_date = data_dict["control_train_day"]
         # I sure hope this website doesn't last until 2030-03-03...
         if begin_date == "20300303":
@@ -68,7 +77,6 @@ class Train:
         return common.str_to_datetime(begin_date, data_dict["sale_time"], "%Y%m%d", "%H%M")
 
     def __get_price_query_params(self):
-        # Once again, we have a case where the order of params matters.
         return common.get_ordered_query_params(
             "train_no", self.id,
             "from_station_no", self.departure_index,

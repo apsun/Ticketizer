@@ -31,6 +31,11 @@ class TrainQuery:
         # Optionally disable the "fuzzy station search" feature
         self.exact_departure_station = False
         self.exact_destination_station = False
+        # For some reason, when searching for trains on a certain date
+        # we sometimes get results from the previous date. If this is
+        # set to true, those results will be ignored. This is most likely
+        # a bug in 12306's code; until they fix it, well, derp.
+        self.ignore_buggy_results = True
 
     def __ensure_param_types(self):
         if isinstance(self.date, str):
@@ -70,7 +75,10 @@ class TrainQuery:
                 continue
             if self.exact_destination_station and destination_station != self.destination_station:
                 continue
-            train_list.append(Train(combined_data, departure_station, destination_station))
+            train = Train(combined_data, departure_station, destination_station)
+            if self.ignore_buggy_results and train.departure_time.date() != self.date:
+                continue
+            train_list.append(train)
         return train_list
 
 

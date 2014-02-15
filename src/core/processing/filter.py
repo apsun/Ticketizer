@@ -11,7 +11,6 @@ class TrainFilter:
         self.blacklist = FlagSet()
         # Departure and arrival time filters. Trains that depart/arrive
         # outside this time range will be ignored. -- ValueRange<datetime.time>
-        # TODO: Change this to compare datetime.datetime for overnight trains?
         self.departure_time_range = ValueRange()
         self.arrival_time_range = ValueRange()
         # Train duration filter. Trains that have a travel time outside this
@@ -19,24 +18,23 @@ class TrainFilter:
         self.duration_range = ValueRange()
         self.ticket_filter = TicketFilter()
 
-    def __filter_trains(self, trains):
-        for train in trains:
-            if self.blacklist[train.name]:
-                continue
-            if not self.type_filter[train.type]:
-                continue
-            if not self.departure_time_range.check(train.departure_time.time()):
-                continue
-            if not self.arrival_time_range.check(train.arrival_time.time()):
-                continue
-            if not self.duration_range.check(train.duration):
-                continue
-            if len(self.ticket_filter.filter(train.tickets)):
-                continue
-            yield train
+    def check(self, train):
+        if self.blacklist[train.name]:
+            return False
+        if not self.type_filter[train.type]:
+            return False
+        if not self.departure_time_range.check(train.departure_time.time()):
+            return False
+        if not self.arrival_time_range.check(train.arrival_time.time()):
+            return False
+        if not self.duration_range.check(train.duration):
+            return False
+        if len(self.ticket_filter.filter(train.tickets)):
+            return False
+        return True
 
     def filter(self, trains):
-        return list(self.__filter_trains(trains))
+        return [train for train in trains if self.check(train)]
 
 
 class TicketFilter:
@@ -51,20 +49,19 @@ class TicketFilter:
         # Whether to ignore trains that are completely sold out
         self.filter_sold_out = False
 
-    def __filter_tickets(self, tickets):
-        for ticket in tickets:
-            ticket_status = ticket.count.status
-            if ticket_status == TicketStatus.NotApplicable:
-                continue
-            if self.filter_sold_out and ticket_status == TicketStatus.SoldOut:
-                continue
-            if self.filter_not_yet_sold and ticket_status == TicketStatus.NotYetSold:
-                continue
-            if self.type_filter[ticket.type]:
-                continue
-            if not self.price_range.check(lambda: ticket.price):
-                continue
-            yield ticket
+    def check(self, ticket):
+        ticket_status = ticket.count.status
+        if ticket_status == TicketStatus.NotApplicable:
+            return False
+        if self.filter_sold_out and ticket_status == TicketStatus.SoldOut:
+            return False
+        if self.filter_not_yet_sold and ticket_status == TicketStatus.NotYetSold:
+            return False
+        if self.type_filter[ticket.type]:
+            return False
+        if not self.price_range.check(lambda: ticket.price):
+            return False
+        return True
 
     def filter(self, tickets):
-        return list(self.__filter_tickets(tickets))
+        return [ticket for ticket in tickets if self.check(ticket)]

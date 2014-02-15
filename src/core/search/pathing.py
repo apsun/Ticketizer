@@ -1,11 +1,14 @@
+# -*- coding: utf-8 -*-
 import datetime
 import requests
+from collections import OrderedDict
 from core.processing.containers import ValueRange, FlagSet
 from core.search.search import TrainQuery, TicketPricing, TicketDirection
+from core.errors import StopPathSearch
 from core import common, logger
 
 
-class CombinedPath:
+class MultiTrainPath:
     def __init__(self, train_list):
         self.train_list = train_list
 
@@ -44,6 +47,10 @@ class PathFinder:
         # between train stations to transfer. Setting this to true
         # is HIGHLY RECOMMENDED unless you know what you are doing!
         self.exact_substations = True
+        # If true, when searching for stations from, say, A->C,
+        # a train that can go from A->C and A->B will only show
+        # up once with the path A->C.
+        self.only_show_longest_path = True
         # The time range (ValueRange<datetime.timedelta>) between successive trains.
         # Set a minimum that is long enough to allow you to get from one
         # train to the other, and a maximum to prevent waiting for too long.
@@ -51,6 +58,11 @@ class PathFinder:
         self.transfer_time_range = ValueRange()
         # A list of stations to avoid
         self.station_blacklist = FlagSet()
+        # (Optional) An instance of the TrainFilter class that
+        # filters out unwanted trains. This filter is applied
+        # BEFORE the "longest path only" filter, which can be
+        # very useful in removing unbuyable trains.
+        self.train_filter = None
 
     @staticmethod
     def __get_train_data_query_params(train):
@@ -98,10 +110,7 @@ class PathFinder:
         station_list.append(train.destination_station)
         return station_list
 
-    def __get_paths_recursive(self, train_list, station_list, query, is_first):
-        # TODO: Remove duplicate trains: If a train can go from A->C,
-        # TODO: A->B, and B->C, it will show twice in the results
-
+    def __get_path_recursive(self, train_list, station_list, query, is_first):
         # Note that the "example" train is passed in as the first
         # item in the train list. After our path has been built,
         # we have to remove this item from the list.
@@ -110,20 +119,25 @@ class PathFinder:
 
         if is_first:
             query.exact_departure_station = self.exact_departure_station
-            query.departure_station = prev_train.departure_station
+            departure_station = prev_train.departure_station
             date_range = [prev_train.departure_time.date()]
         else:
             query.exact_departure_station = self.exact_substations
-            query.departure_station = prev_train.destination_station
+            departure_station = prev_train.destination_station
             date_range_begin = prev_train.arrival_time + self.transfer_time_range.lower
             date_range_end = prev_train.arrival_time + self.transfer_time_range.upper
             date_range = list(self.__get_dates_between(date_range_begin, date_range_end))
+
+        query.departure_station = departure_station
 
         # Need to maintain a dict of train destination stations.
         # These destinations are the QUERIED stations, NOT the ones
         # returned by search queries, which can be fuzzy. This is
         # used to determine what stations remain in the trip.
-        next_train_dict = {}
+        # Use an ordered dictionary to preserve station order,
+        # which might be useful if the client doesn't sort the
+        # results themselves.
+        next_train_dict = OrderedDict()
 
         for next_station in station_list:
             # Make sure the destination fuzzy search option is set
@@ -143,41 +157,78 @@ class PathFinder:
             for date in date_range:
                 query.date = date
                 for next_train in query.execute():
+                    transfer_time = next_train.departure_time - prev_train.arrival_time
                     # For the first train there's obviously no previous train to check
-                    if is_first or self.transfer_time_range.check(next_train.departure_time - prev_train.arrival_time):
-                        next_train_dict[next_train] = next_station
+                    if not is_first and not self.transfer_time_range.check(transfer_time):
+                        continue
+                    if self.train_filter is not None and self.train_filter.check(next_train):
+                        continue
+                    if self.only_show_longest_path:
+                        for train in next_train_dict:
+                            if train.id == next_train.id and train.departure_time == next_train.departure_time:
+                                # Found a clash, replace the old train.
+                                # Technically, we should compare the station indices,
+                                # but since we are looping in order from closest to
+                                # furthest station, we can just replace the previous train.
+                                # Since we don't iterate over anything after this,
+                                # we can safely modify the collection in the loop.
+                                next_train_dict.pop(train)
+                                break
+                    next_train_dict[next_train] = next_station
 
         # Oh no, there is no way to get from our current station to
         # the target destination station!
         if len(next_train_dict) == 0:
-            # TODO
-            logger.debug("No trains found in sub-path from {0} to {1}")
-            return None
+            logger.debug("No trains found in sub-path from {0} to {1}".format(
+                departure_station.name, last_station.name
+            ))
+            # Let the client handle no-result cases
+            # return None
 
-        # Call the user-defined train selector function with the train list
-        selected_train = self.path_selector(list(next_train_dict.keys()))
+        while True:
+            # Call the user-defined train selector function with the train list
+            selected_train = self.path_selector(list(next_train_dict.keys()))
 
-        # Accept None as a sentinel value to exit the search process
-        if selected_train is None:
-            logger.debug("No train selected by user, exiting path searcher")
-            return None
+            # Accept None as a sentinel value to "undo" to the higher level
+            # If the client wants to exit the search, raise an exception
+            # (StopPathSearch) in the path selector function and catch it
+            # in the call to get_paths()
+            if selected_train is None:
+                return None
 
-        train_list.append(selected_train)
-        curr_station = next_train_dict[selected_train]
+            train_list.append(selected_train)
 
-        # "Slice" off the stations that we have already passed
-        remaining_stations = station_list[station_list.index(curr_station)+1:]
+            # This is not the actual station that we are at, but the
+            # one that was in the original train's station path, which
+            # is obviously guaranteed to be in the station list.
+            curr_station = next_train_dict[selected_train]
 
-        # If there are no stations left, we are at our destination!
-        if len(remaining_stations) == 0:
-            return CombinedPath(train_list[1:])
+            # "Slice" off the stations that we have already passed
+            remaining_stations = station_list[station_list.index(curr_station)+1:]
 
-        # Otherwise, we have to search in the remaining section of the trip
-        return self.__get_paths_recursive(train_list, remaining_stations, query, False)
+            # If there are no stations left, we are at our destination!
+            if len(remaining_stations) == 0:
+                return MultiTrainPath(train_list[1:])
 
-    def get_paths(self, train):
+            # Otherwise, we have to search in the remaining section of the trip
+            next_search = self.__get_path_recursive(train_list, remaining_stations, query, False)
+
+            # Note that at this point the query object has probably been
+            # modified, so don't rely on it to store information across calls
+
+            if next_search is not None:
+                return next_search
+
+            logger.debug("Undoing from " + query.departure_station.name + " to " + departure_station.name)
+
+    def get_path(self, train):
         query = TrainQuery(self.__station_list)
         query.pricing = self.pricing
         query.direction = TicketDirection.ONE_WAY
         substations = self.__get_substations(train)
-        return self.__get_paths_recursive([train], substations, query, True)
+        result = self.__get_path_recursive([train], substations, query, True)
+        # The client is probably handling StopPathSearch anyways,
+        # so make "undo"ing from the first level raise it as well.
+        if result is None:
+            raise StopPathSearch()
+        return result
