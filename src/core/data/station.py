@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-import requests
-from core import logger, common
+from core import logger, common, webrequest
 
 
 class Station:
@@ -44,13 +43,12 @@ class StationList:
     @staticmethod
     def __get_all_stations():
         url = "https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"
-        response = requests.get(url, verify=False)
-        response.raise_for_status()
+        response = webrequest.get(url)
         js_split = response.text.split("'")
         assert len(js_split) == 3
         station_split = js_split[1].split("@")
-        station_data_list = common.islice(station_split, start=1)
-        logger.debug("Fetched station list (" + str(len(station_split)-1) + " stations)", response)
+        station_data_list = common.slice_list(station_split, start=1)
+        logger.debug("Fetched station list ({0} stations)".format(len(station_split)-1), response)
         return [Station(item.split("|")) for item in station_data_list]
 
     @staticmethod

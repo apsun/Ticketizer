@@ -135,22 +135,72 @@ class TicketType:
 
 
 class TicketStatus:
-    NotApplicable = 0
-    NotYetSold = 1
-    LargeCount = 2
-    SoldOut = 3
-    Normal = 4
+    NOT_APPLICABLE = 0
+    NOT_YET_SOLD = 1
+    LARGE_COUNT = 2
+    SOLD_OUT = 3
+    NORMAL = 4
 
     TEXT_LOOKUP = {
-        NotApplicable: "--",
-        NotYetSold:    "*",
-        LargeCount:    "有",
-        SoldOut:       "无"
+        NOT_APPLICABLE: "--",
+        NOT_YET_SOLD:   "*",
+        LARGE_COUNT:    "有",
+        SOLD_OUT:       "无"
     }
 
     REVERSE_TEXT_LOOKUP = {
-        "--": NotApplicable,
-        "*":  NotYetSold,
-        "有": LargeCount,
-        "无": SoldOut
+        "--": NOT_APPLICABLE,
+        "*":  NOT_YET_SOLD,
+        "有": LARGE_COUNT,
+        "无": SOLD_OUT
+    }
+
+
+class TicketPricing:
+    NORMAL = "ADULT"
+    STUDENT = "0X00"
+
+
+class TicketDirection:
+    ONE_WAY = "dc"
+    ROUND_TRIP = "fc"
+
+
+class IdentificationType:
+    SECOND_GEN_ID = "1"
+    FIRST_GEN_ID = "2"
+    HONGKONG_MACAU = "C"
+    TAIWAN = "G"
+    PASSPORT = "B"
+
+    TEXT_LOOKUP = {
+        SECOND_GEN_ID:  "二代身份证",
+        FIRST_GEN_ID:   "一代身份证",
+        HONGKONG_MACAU: "港澳通行证",
+        TAIWAN:         "台湾通行证",
+        PASSPORT:       "护照"
+    }
+
+
+class PassengerType:
+    ADULT = "1"
+    CHILD = "2"
+    STUDENT = "3"
+    DISABLED = "4"
+
+    TEXT_LOOKUP = {
+        ADULT: "成人",
+        CHILD: "儿童",
+        STUDENT: "学生",
+        DISABLED: "残疾军人"
+    }
+
+
+class Gender:
+    MALE = "M"
+    FEMALE = "F"
+
+    TEXT_LOOKUP = {
+        MALE: "男",
+        FEMALE: "女"
     }

@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-import datetime
-import requests
-from core.data.ticket import Ticket, TicketCount, TicketList
+from datetime import datetime, timedelta
+from core import logger, common, webrequest
 from core.enums import TrainType, TicketType, TicketStatus
-from core import logger, common
+from core.data.ticket import Ticket, TicketCount, TicketList
 
 
 class Train:
@@ -21,7 +20,7 @@ class Train:
         # The departure time of the train (datetime.datetime)
         self.departure_time = common.str_to_datetime(data_dict["start_train_date"], data_dict["start_time"], "%Y%m%d")
         # The length of the trip (datetime.timedelta)
-        self.duration = datetime.timedelta(minutes=int(data_dict["lishiValue"]))
+        self.duration = timedelta(minutes=int(data_dict["lishiValue"]))
         # The arrival time of the train (datetime.datetime)
         self.arrival_time = self.departure_time + self.duration
         # The 1-based index of the departure station in the train's overall station list
@@ -32,7 +31,10 @@ class Train:
         self.can_buy = common.is_true(data_dict["canWebBuy"])
         # Used for querying ticket prices.
         self.seat_types = data_dict["seat_types"]
-        # Used for purchasing tickets.
+        # Used for purchasing tickets. Note that this value
+        # expires 5 minutes after creation, so the client must
+        # re-query the train information after creating this object
+        # if they want to purchase any tickets.
         self.secret_key = data_dict["secretStr"]
         # A dictionary mapping each ticket type to a Ticket object.
         # Even if the train does not have that ticket type,
@@ -64,7 +66,7 @@ class Train:
         # not yet sold. Make sure this is the latter case.
         not_yet_sold = False
         for ticket in tickets:
-            if ticket.count.status == TicketStatus.NotYetSold:
+            if ticket.count.status == TicketStatus.NOT_YET_SOLD:
                 not_yet_sold = True
                 break
         if not not_yet_sold:
@@ -73,21 +75,22 @@ class Train:
         begin_date = data_dict["control_train_day"]
         # I sure hope this website doesn't last until 2030-03-03...
         if begin_date == "20300303":
-            begin_date = datetime.datetime.now().date()
+            begin_date = datetime.now().date()
         return common.str_to_datetime(begin_date, data_dict["sale_time"], "%Y%m%d", "%H%M")
 
     def __get_price_query_params(self):
-        return common.get_ordered_query_params(
-            "train_no", self.id,
-            "from_station_no", self.departure_index,
-            "to_station_no", self.destination_index,
-            "seat_types", self.seat_types,
-            "train_date", common.date_to_str(self.departure_time))
+        return [
+            ("train_no", self.id),
+            ("from_station_no", self.departure_index),
+            ("to_station_no", self.destination_index),
+            ("seat_types", self.seat_types),
+            ("train_date", common.date_to_str(self.departure_time))
+        ]
 
     def refresh_ticket_prices(self):
-        url = "https://kyfw.12306.cn/otn/leftTicket/queryTicketPrice?" + self.__get_price_query_params()
-        response = requests.get(url, verify=False)
-        response.raise_for_status()
+        url = "https://kyfw.12306.cn/otn/leftTicket/queryTicketPrice"
+        params = self.__get_price_query_params()
+        response = webrequest.get(url, params=params)
         json_data = common.read_json_data(response)
         for key, value in json_data.items():
             if not isinstance(value, str):
@@ -95,7 +98,7 @@ class Train:
             ticket_type = TicketType.REVERSE_ID2_LOOKUP.get(key)
             if ticket_type is None:
                 continue
-            if self.tickets[ticket_type].count.status == TicketStatus.NotApplicable:
+            if self.tickets[ticket_type].count.status == TicketStatus.NOT_APPLICABLE:
                 continue
             # Ensure that price is in the format ¥XXX.X
             assert value[0] == "¥"

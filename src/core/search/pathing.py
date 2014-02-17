@@ -1,11 +1,10 @@
 # -*- coding: utf-8 -*-
-import datetime
-import requests
+from datetime import datetime, timedelta
 from collections import OrderedDict
-from core.processing.containers import ValueRange, FlagSet
-from core.search.search import TrainQuery, TicketPricing, TicketDirection
+from core import common, logger, webrequest
 from core.errors import StopPathSearch
-from core import common, logger
+from core.search.search import TrainQuery, TicketPricing, TicketDirection
+from core.processing.containers import ValueRange, FlagSet
 
 
 class MultiTrainPath:
@@ -66,26 +65,27 @@ class PathFinder:
 
     @staticmethod
     def __get_train_data_query_params(train):
-        return common.get_ordered_query_params(
-            "train_no", train.id,
-            "from_station_telecode", train.departure_station.id,
-            "to_station_telecode", train.destination_station.id,
-            "depart_date", common.date_to_str(train.departure_time.date()))
+        return [
+            ("train_no", train.id),
+            ("from_station_telecode", train.departure_station.id),
+            ("to_station_telecode", train.destination_station.id),
+            ("depart_date", common.date_to_str(train.departure_time.date()))
+        ]
 
     @staticmethod
     def __get_dates_between(date_start, date_end):
-        if isinstance(date_start, datetime.datetime):
+        if isinstance(date_start, datetime):
             date_start = date_start.date()
-        if isinstance(date_end, datetime.datetime):
+        if isinstance(date_end, datetime):
             date_end = date_end.date()
         for i in range((date_end - date_start).days + 1):
-            yield date_start + datetime.timedelta(days=i)
+            yield date_start + timedelta(days=i)
 
     def __get_substations(self, train):
         # Gets stations in (train.departure, train.destination]
-        url = "https://kyfw.12306.cn/otn/czxx/queryByTrainNo?" + self.__get_train_data_query_params(train)
-        response = requests.get(url, verify=False)
-        response.raise_for_status()
+        url = "https://kyfw.12306.cn/otn/czxx/queryByTrainNo"
+        params = self.__get_train_data_query_params(train)
+        response = webrequest.get(url, params=params)
         json_station_list = common.read_json_data(response)["data"]
         logger.debug("Got station data for train " + train.name, response)
         istart = None

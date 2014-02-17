@@ -1,17 +1,7 @@
 # -*- coding: utf-8 -*-
-import requests
+from core import logger, common, webrequest
+from core.enums import TicketPricing, TicketDirection
 from core.data.train import Train
-from core import logger, common
-
-
-class TicketPricing:
-    NORMAL = "ADULT"
-    STUDENT = "0X00"
-
-
-class TicketDirection:
-    ONE_WAY = "dc"
-    ROUND_TRIP = "fc"
 
 
 class TrainQuery:
@@ -49,17 +39,18 @@ class TrainQuery:
             logger.warning("Using destination station ID instead of object")
 
     def __get_query_string(self):
-        return common.get_ordered_query_params(
-            "leftTicketDTO.train_date", common.date_to_str(self.date),
-            "leftTicketDTO.from_station", self.departure_station.id,
-            "leftTicketDTO.to_station", self.destination_station.id,
-            "purpose_codes", self.pricing)
+        return [
+            ("leftTicketDTO.train_date", common.date_to_str(self.date)),
+            ("leftTicketDTO.from_station", self.departure_station.id),
+            ("leftTicketDTO.to_station", self.destination_station.id),
+            ("purpose_codes", self.pricing)
+        ]
 
     def execute(self):
         self.__ensure_param_types()
-        url = "https://kyfw.12306.cn/otn/leftTicket/query?" + self.__get_query_string()
-        response = requests.get(url, verify=False)
-        response.raise_for_status()
+        url = "https://kyfw.12306.cn/otn/leftTicket/query"
+        params = self.__get_query_string()
+        response = webrequest.get(url, params=params)
         json_data = common.read_json_data(response)
         logger.debug("Got ticket list from {0} to {1} on {2}".format(
             self.departure_station.name,

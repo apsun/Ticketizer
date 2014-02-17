@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-import datetime
-import urllib.parse
-import itertools
+from datetime import datetime
+from itertools import islice
 from core.errors import InvalidRequestError
 
 
@@ -9,26 +8,29 @@ def read_json_data(response):
     json = read_json(response)
     json_data = json.get("data")
     if json_data is None:
-        raise InvalidRequestError(json.get("messages"))
+        raise InvalidRequestError(join_list(json.get("messages")))
     return json_data
 
 
-def islice(iterable, start=None, end=None, step=None):
+def between(string, start, end):
+    begin = string.index(start) + len(start)
+    end = string.index(end)
+    return string[begin:end]
+
+
+def slice_list(iterable, start=None, end=None, step=None):
+    # If you REALLY like your negative end indices,
+    # you can have them (only if you can natively call
+    # len() on the iterable)
+    if end is not None and end < 0:
+        try:
+            end %= len(iterable)
+        except TypeError:
+            pass
     # For some reason PyCharm thinks islice's constructor
     # has the signature __init__(iterable, end). This avoids
     # a warning every time you use itertools.islice.
-    # noinspection PyArgumentList
-    return itertools.islice(iterable, start, end, step)
-
-
-def get_ordered_query_params(*args):
-    # This function only exists because 12306 is retarded.
-    keys = islice(args, start=0, step=2)
-    values = islice(args, start=1, step=2)
-    # urlencode properly handles special characters, even
-    # through there probably won't be any...
-    return urllib.parse.urlencode(list(zip(keys, values)))
-    # return "&".join("%s=%s" % pair for pair in zip(keys, values))
+    return islice(iterable, start, end, step)
 
 
 def get_dict_value_coalesce(value, *keys):
@@ -55,22 +57,25 @@ def flatten_dict(value):
 
 def read_json(response):
     if response.text == "-1":  # For 12306, "-1" means invalid query
-        raise InvalidRequestError("Invalid query, check your parameters")
-    return response.json()
+        raise InvalidRequestError("Invalid query parameters, has the 12306 API changed?")
+    json = response.json()
+    if json.get("status") is not True:
+        raise InvalidRequestError(join_list(json.get("messages")))
+    return json
 
 
 def datetime_to_str(datetime_obj, fmt="%Y-%m-%d %H:%M"):
     return datetime_obj.strftime(fmt)
 
 
-def str_to_datetime(date, time, date_fmt="%Y-%m-%d", time_fmt="%H:%M"):
+def str_to_datetime(date_value, time_value, date_fmt="%Y-%m-%d", time_fmt="%H:%M"):
     # Allows date and time parameters to be date and time objects respectively,
     # meaning you can use this method to "concatenate" date and time objects.
-    if isinstance(date, str):
-        date = datetime.datetime.strptime(date, date_fmt).date()
-    if isinstance(time, str):
-        time = datetime.datetime.strptime(time, time_fmt).time()
-    return datetime.datetime.combine(date, time)
+    if isinstance(date_value, str):
+        date_value = datetime.strptime(date_value, date_fmt).date()
+    if isinstance(time_value, str):
+        time_value = datetime.strptime(time_value, time_fmt).time()
+    return datetime.combine(date_value, time_value)
 
 
 def date_to_str(date_obj, fmt="%Y-%m-%d"):
@@ -78,7 +83,7 @@ def date_to_str(date_obj, fmt="%Y-%m-%d"):
 
 
 def str_to_date(date_str, fmt="%Y-%m-%d"):
-    return datetime.datetime.strptime(date_str, fmt).date()
+    return datetime.strptime(date_str, fmt).date()
 
 
 def time_to_str(time_obj, fmt="%H:%M"):
@@ -86,7 +91,7 @@ def time_to_str(time_obj, fmt="%H:%M"):
 
 
 def str_to_time(time_str, fmt="%H:%M"):
-    return datetime.datetime.strptime(time_str, fmt).time()
+    return datetime.strptime(time_str, fmt).time()
 
 
 def timedelta_to_str(timedelta_obj, force_seconds=False):
@@ -102,8 +107,23 @@ def timedelta_to_str(timedelta_obj, force_seconds=False):
 
 
 def is_true(value):
-    if value is True:
-        return True
-    if value == "Y":
-        return True
-    return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        if value == "Y":
+            return True
+        if value == "N":
+            return False
+    raise ValueError("Unknown boolean string format")
+
+
+def join_list(value, separator="; "):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        if len(value) == 0:
+            return None
+        return separator.join(value)
+    raise ValueError("Argument is not a list or string")

@@ -51,11 +51,11 @@ class TicketFilter:
 
     def check(self, ticket):
         ticket_status = ticket.count.status
-        if ticket_status == TicketStatus.NotApplicable:
+        if ticket_status == TicketStatus.NOT_APPLICABLE:
             return False
-        if self.filter_sold_out and ticket_status == TicketStatus.SoldOut:
+        if self.filter_sold_out and ticket_status == TicketStatus.SOLD_OUT:
             return False
-        if self.filter_not_yet_sold and ticket_status == TicketStatus.NotYetSold:
+        if self.filter_not_yet_sold and ticket_status == TicketStatus.NOT_YET_SOLD:
             return False
         if self.type_filter[ticket.type]:
             return False

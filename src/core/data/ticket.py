@@ -63,10 +63,10 @@ class TicketCount:
         # It just provides easier comparisons against cases such as "有" or "无".
         # (Who the heck thought that was a good idea? Why not just give a number?)
         status = TicketStatus
-        self.status = status.REVERSE_TEXT_LOOKUP.get(count_string, status.Normal)
-        if self.status == status.LargeCount:
+        self.status = status.REVERSE_TEXT_LOOKUP.get(count_string, status.NORMAL)
+        if self.status == status.LARGE_COUNT:
             self.value = float("inf")
-        elif self.status == status.Normal:
+        elif self.status == status.NORMAL:
             self.value = int(count_string)
         else:
             self.value = 0

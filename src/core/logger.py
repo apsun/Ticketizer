@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
-import datetime
-import requests
+from datetime import datetime
+from requests import Response
 
 
 class LogType:
@@ -25,7 +25,7 @@ def log(log_type, msg):
         fmt_str = "{2}"
     
     if enable_time:
-        curr_time = datetime.datetime.now().strftime("%H:%M:%S")
+        curr_time = datetime.now().strftime("%H:%M:%S")
     else:
         curr_time = None
     print(fmt_str.format(log_type, curr_time, msg))
@@ -35,7 +35,7 @@ def log_convert_response(log_type, msg, response):
     # Automatically appends the status code of an HTTP request to the log, if applicable.
     if response is None:
         log(log_type, msg)
-    elif isinstance(response, requests.Response):
+    elif isinstance(response, Response):
         log(log_type, "{0} (status code: {1})".format(msg, response.status_code))
     else:
         raise TypeError()
