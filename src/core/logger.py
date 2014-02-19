@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
-from requests import Response
 
 
 class LogType:
-    ERROR = "E"
-    WARNING = "W"
-    DEBUG = "D"
+    DEBUG = 1
+    NETWORK = 2
+    WARNING = 4
+    ERROR = 8
+
+    NAME_LOOKUP = {
+        DEBUG: "D",
+        NETWORK: "N",
+        WARNING: "W",
+        ERROR: "E"
+    }
 
 
 def log(log_type, msg):
@@ -28,26 +35,20 @@ def log(log_type, msg):
         curr_time = datetime.now().strftime("%H:%M:%S")
     else:
         curr_time = None
-    print(fmt_str.format(log_type, curr_time, msg))
+    print(fmt_str.format(LogType.NAME_LOOKUP[log_type], curr_time, msg))
 
 
-def log_convert_response(log_type, msg, response):
-    # Automatically appends the status code of an HTTP request to the log, if applicable.
-    if response is None:
-        log(log_type, msg)
-    elif isinstance(response, Response):
-        log(log_type, "{0} (status code: {1})".format(msg, response.status_code))
-    else:
-        raise TypeError()
-    
-
-def error(msg, response=None):
-    log_convert_response(LogType.ERROR, msg, response)
+def error(msg):
+    log(LogType.ERROR, msg)
 
     
-def warning(msg, response=None):
-    log_convert_response(LogType.WARNING, msg, response)
+def warning(msg):
+    log(LogType.WARNING, msg)
 
-    
-def debug(msg, response=None):
-    log_convert_response(LogType.DEBUG, msg, response)
+
+def network(msg):
+    log(LogType.NETWORK, msg)
+
+
+def debug(msg):
+    log(LogType.DEBUG, msg)

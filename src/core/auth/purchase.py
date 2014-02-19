@@ -1,33 +1,77 @@
-# TODO: Merge this into the login module
+# -*- coding: utf-8 -*-
 import urllib.parse
-from core import common, logger, webrequest
-from core.errors import UnfinishedTransactionError, InvalidRequestError
-from core.enums import TicketPricing, TicketDirection, PassengerType, IdentificationType
+from core.enums import TicketPricing, TicketDirection
+from core.errors import UnfinishedTransactionError, InvalidRequestError, PurchaseFailedError
+from core.auth.captcha import Captcha, CaptchaType
 from core.data.credentials import Credentials
+from core import common, webrequest, logger
 
 
-class Buyer:
-    def __init__(self, train, login_manager):
+class TicketPurchaser:
+    def __init__(self, cookies):
+        self.__cookies = cookies
         self.direction = TicketDirection.ONE_WAY
         self.pricing = TicketPricing.NORMAL
-        self.train = train
-        self.login_manager = login_manager
-        self.passenger_selector = None
+        self.train = None
 
-    def __get_submit_params(self):
+    def __get_purchase_captcha(self, submit_token):
+        check_params = self.__get_captcha_check_params(submit_token)
+        return Captcha(CaptchaType.PURCHASE, self.__cookies, check_params=check_params)
+
+    @staticmethod
+    def __get_captcha_check_params(submit_token):
         return {
-            "back_train_date": common.date_to_str(self.train.departure_time.date()),
+            "REPEAT_SUBMIT_TOKEN": submit_token,
+            "_json_att": ""
+        }
+
+    def __get_purchase_submit_params(self):
+        return {
+            "back_train_date": common.date_to_str(self.train.departure_time.date()),  # TODO
             "purpose_codes": self.pricing,
             "query_from_station_name": self.train.departure_station.name,
             "query_to_station_name": self.train.destination_station.name,
             "secretStr": urllib.parse.unquote(self.train.secret_key),
             "tour_flag": self.direction,
-            "train_date": common.date_to_str(self.train.departure_time.date())
+            "train_date": common.date_to_str(self.train.departure_time.date()),
+            "undefined": ""
         }
 
-    def __get_passenger_query_params(self):
+    @staticmethod
+    def __get_passenger_query_params(submit_token):
         return {
-            "REPEAT_SUBMIT_TOKEN": self.__get_state_vars()["globalRepeatSubmitToken"]
+            "REPEAT_SUBMIT_TOKEN": submit_token,
+            "_json_att": ""
+        }
+
+    @staticmethod
+    def __get_passenger_strs(passenger_list):
+        old_format = "{name},{id_type},{id_no},{passenger_type}"
+        new_format = "{seat_type},0,{ticket_type},{name},{id_type},{id_no},{phone_no},N"
+        format_func = lambda passenger, format_str: format_str.format(
+            name=passenger.name,
+            id_type=passenger.id_type,
+            id_no=passenger.id_number,
+            passenger_type="1",  # TODO
+            seat_type="M",
+            ticket_type="1",
+            phone_no=passenger.phone_number
+        )
+        old_passenger_str = "_".join(map(lambda x: format_func(x, old_format), passenger_list)) + "_"
+        new_passenger_str = "_".join(map(lambda x: format_func(x, new_format), passenger_list))
+        return old_passenger_str, new_passenger_str
+
+    def __get_check_order_params(self, passenger_list, submit_token, captcha_answer):
+        old_pass_str, new_pass_str = self.__get_passenger_strs(passenger_list)
+        return {
+            "REPEAT_SUBMIT_TOKEN": submit_token,
+            "_json_att": "",
+            "bed_level_order_num": "000000000000000000000000000000",
+            "cancel_flag": "2",
+            "oldPassengerStr": old_pass_str,
+            "passengerTicketStr": new_pass_str,
+            "randCode": captcha_answer,
+            "tour_flag": self.direction
         }
 
     def __get_purchase_confirm_url(self):
@@ -36,12 +80,11 @@ class Buyer:
             TicketDirection.ROUND_TRIP: "https://kyfw.12306.cn/otn/confirmPassenger/initWc"
         }[self.direction]
 
-    def __get_state_vars(self):
+    def __get_state_vars(self, url):
         # WARNING: VERY HACKY THINGS AHEAD
         # (and I'm not even using regex! >_<)
-        url = self.__get_purchase_confirm_url()
-        cookies = None  # TODO: FIX
-        response = webrequest.get(url, cookies=cookies)
+        cookies = self.__cookies
+        response = webrequest.get(url, cookies=cookies, params={"_json_att": ""})
         # We're reading the entire page contents into memory.
         # This is a little bit inefficient, since the state
         # vars are always near the top of the page.
@@ -89,32 +132,41 @@ class Buyer:
 
     def __submit_order_request(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest"
-        params = self.__get_submit_params()
-        cookies = None  # TODO: FIX
-        response = webrequest.post(url, params=params, cookies=cookies)
-        json = common.read_json(response)
-        success = json["status"] is True
-        if not success:
+        params = self.__get_purchase_submit_params()
+        cookies = self.__cookies
+        json = webrequest.post_json(url, params=params, cookies=cookies)
+        if json["status"] is not True:
+            # TODO: is this right?
             messages = json["messages"]
             for message in messages:
                 if str(message).startswith("您还有未处理的订单"):
                     raise UnfinishedTransactionError()
             raise InvalidRequestError(common.join_list(messages))
-        logger.debug("Submitted ticket purchase request", response)
 
-    def __get_passenger_list(self):
+    def __get_passenger_list(self, submit_token):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs"
-        params = self.__get_passenger_query_params()
-        cookies = None  # TODO: FIX
-        response = webrequest.post(url, params=params, cookies=cookies)
-        json_data = common.read_json_data(response)
-        passenger_data_list = json_data["normal_passengers"]
+        params = self.__get_passenger_query_params(submit_token)
+        cookies = self.__cookies
+        json = webrequest.post_json(url, params=params, cookies=cookies)
+        passenger_data_list = json["data"]["normal_passengers"]
         logger.debug("Fetched passenger list ({0} passengers)".format(len(passenger_data_list)))
         return [Credentials(data) for data in passenger_data_list]
 
-    def buy(self):
-        for passenger in self.__get_passenger_list():
-            print(passenger.name + "  \t" +
-                  PassengerType.TEXT_LOOKUP[passenger.type] + "\t  " + \
-                  IdentificationType.TEXT_LOOKUP[passenger.id_type] + "  \t" + \
-                  passenger.id_number)
+    def __check_order_info(self, passenger_list, submit_token, captcha_answer):
+        url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
+        params = self.__get_check_order_params(passenger_list, submit_token, captcha_answer)
+        json = webrequest.post_json(url, params=params)
+        webrequest.check_json_flag(json, "data", "submitStatus", exception=PurchaseFailedError)
+
+    def __get_queue_count(self):
+        pass
+
+    def purchase_tickets(self, pasenger_selector, captcha_solver):
+        self.__submit_order_request()
+        purchase_url = self.__get_purchase_confirm_url()
+        submit_token = self.__get_state_vars(purchase_url)["globalRepeatSubmitToken"]
+        passenger_list = self.__get_passenger_list(submit_token)
+        selected_passengers = pasenger_selector(passenger_list)
+        captcha = self.__get_purchase_captcha(submit_token)
+        captcha_answer = captcha.solve(captcha_solver).answer
+        self.__check_order_info(selected_passengers, submit_token, captcha_answer)

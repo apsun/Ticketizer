@@ -85,9 +85,8 @@ class PathFinder:
         # Gets stations in (train.departure, train.destination]
         url = "https://kyfw.12306.cn/otn/czxx/queryByTrainNo"
         params = self.__get_train_data_query_params(train)
-        response = webrequest.get(url, params=params)
-        json_station_list = common.read_json_data(response)["data"]
-        logger.debug("Got station data for train " + train.name, response)
+        json_station_list = webrequest.get_json(url, params=params)["data"]
+        logger.debug("Fetched station data for train " + train.name)
         istart = None
         iend = len(json_station_list)
         for i in range(len(json_station_list)):

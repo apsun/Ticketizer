@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-from core import logger, common, webrequest
+from core import logger, webrequest
 from core.errors import LoginFailedError, InvalidOperationError
 from core.auth.cookies import SessionCookies
 from core.auth.captcha import CaptchaType, Captcha
+from core.auth.purchase import TicketPurchaser
 
 
 class LoginManager:
@@ -27,41 +28,32 @@ class LoginManager:
         if self.__username is None:
             return False
         url = "https://kyfw.12306.cn/otn/login/checkUser"
-        response = webrequest.post(url, cookies=self.__cookies)
-        return common.read_json_data(response)["flag"] is True
+        return webrequest.post_json(url, cookies=self.__cookies)["data"]["flag"] is True
+
+    def get_purchaser(self):
+        if not self.__is_logged_in():
+            raise InvalidOperationError("Cannot purchase tickets without logging in")
+        return TicketPurchaser(self.__cookies)
 
     def login(self, username, password, captcha):
-        if captcha.answer is None:
-            raise LoginFailedError("Captcha answer not provided or is incorrect, login failed")
-
         # Submit user credentials to the server
         data = self.__get_login_params(username, password, captcha.answer)
         url = "https://kyfw.12306.cn/otn/login/loginAysnSuggest"
-        response = webrequest.post(url, data=data, cookies=self.__cookies)
+        json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         # Check server response to see if login was successful
         # response > data > loginCheck should be "Y" if we logged in
         # otherwise, loginCheck will be absent
-        json = common.read_json(response)
-        success = common.is_true(json["data"]["loginCheck"])
-        if success:
-            logger.debug("Successfully logged in with username " + username, response)
-            self.__username = username
-        else:
-            message = common.join_list(json.get("messages"))
-            logger.error("Logging in with username {0} failed, reason: {1}".format(username, message), response)
-            raise LoginFailedError(message)
+        webrequest.check_json_flag(json, "data", "loginCheck", exception=LoginFailedError)
+        logger.debug("Successfully logged in with username " + username)
+        self.__username = username
 
     def logout(self):
-        response = webrequest.get("https://kyfw.12306.cn/otn/login/loginOut", cookies=self.__cookies)
+        webrequest.get("https://kyfw.12306.cn/otn/login/loginOut", cookies=self.__cookies)
         if self.__username is not None:
-            logger.debug("Logged out of user: " + self.__username, response)
+            # noinspection PyTypeChecker
+            logger.debug("Logged out of user: " + self.__username)
         else:
-            logger.warning("Logged out of unknown user", response)
+            logger.warning("Logged out of unknown user")
 
     def get_login_captcha(self):
         return Captcha(CaptchaType.LOGIN, self.__cookies)
-
-    def get_purchase_captcha(self):
-        if not self.__is_logged_in():
-            raise InvalidOperationError("Cannot get purchase captcha without logging in")
-        return Captcha(CaptchaType.PURCHASE, self.__cookies)

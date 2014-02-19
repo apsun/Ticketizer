@@ -1,15 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from itertools import islice
-from core.errors import InvalidRequestError
-
-
-def read_json_data(response):
-    json = read_json(response)
-    json_data = json.get("data")
-    if json_data is None:
-        raise InvalidRequestError(join_list(json.get("messages")))
-    return json_data
 
 
 def between(string, start, end):
@@ -30,6 +21,7 @@ def slice_list(iterable, start=None, end=None, step=None):
     # For some reason PyCharm thinks islice's constructor
     # has the signature __init__(iterable, end). This avoids
     # a warning every time you use itertools.islice.
+    # noinspection PyArgumentList
     return islice(iterable, start, end, step)
 
 
@@ -53,15 +45,6 @@ def flatten_dict(value):
         else:
             combined[k] = v
     return combined
-
-
-def read_json(response):
-    if response.text == "-1":  # For 12306, "-1" means invalid query
-        raise InvalidRequestError("Invalid query parameters, has the 12306 API changed?")
-    json = response.json()
-    if json.get("status") is not True:
-        raise InvalidRequestError(join_list(json.get("messages")))
-    return json
 
 
 def datetime_to_str(datetime_obj, fmt="%Y-%m-%d %H:%M"):
@@ -110,11 +93,12 @@ def is_true(value):
     if isinstance(value, bool):
         return value
     if isinstance(value, str):
-        if value == "Y":
+        if value == "Y" or value == "true":
             return True
-        if value == "N":
+        if value == "N" or value == "false":
             return False
-    raise ValueError("Unknown boolean string format")
+    return False
+    # raise ValueError("Unknown boolean value: " + str(value))
 
 
 def join_list(value, separator="; "):

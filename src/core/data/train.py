@@ -90,9 +90,8 @@ class Train:
     def refresh_ticket_prices(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/queryTicketPrice"
         params = self.__get_price_query_params()
-        response = webrequest.get(url, params=params)
-        json_data = common.read_json_data(response)
-        for key, value in json_data.items():
+        json = webrequest.get_json(url, params=params)
+        for key, value in json["data"].items():
             if not isinstance(value, str):
                 continue
             ticket_type = TicketType.REVERSE_ID2_LOOKUP.get(key)
@@ -105,7 +104,7 @@ class Train:
             assert value[-2] == "."
             self.tickets[ticket_type].price = float(value[1:])
         self.ticket_prices_fetched = True
-        logger.debug("Fetched ticket prices for train " + self.name, response)
+        logger.debug("Fetched ticket prices for train " + self.name)
 
     def __str__(self):
         return "{0} (ID: {1}) from {2} to {3}".format(

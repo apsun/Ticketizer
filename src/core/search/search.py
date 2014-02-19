@@ -50,13 +50,11 @@ class TrainQuery:
         self.__ensure_param_types()
         url = "https://kyfw.12306.cn/otn/leftTicket/query"
         params = self.__get_query_string()
-        response = webrequest.get(url, params=params)
-        json_data = common.read_json_data(response)
+        json_data = webrequest.get_json(url, params=params)["data"]
         logger.debug("Got ticket list from {0} to {1} on {2}".format(
             self.departure_station.name,
             self.destination_station.name,
-            common.date_to_str(self.date)
-        ), response)
+            common.date_to_str(self.date)))
         train_list = []
         for train_data in json_data:
             combined_data = common.flatten_dict(train_data)

@@ -9,6 +9,7 @@ class Credentials:
         self.id_type = passenger_data["passenger_id_type_code"]
         self.id_number = passenger_data["passenger_id_no"]
         self.type = passenger_data["passenger_type"]
+        self.phone_number = passenger_data["mobile_no"]
 
     def __str__(self):
         return "{0} (gender: {1}, type: {2}, ID: {3}->{4})".format(

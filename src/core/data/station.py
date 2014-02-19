@@ -48,7 +48,7 @@ class StationList:
         assert len(js_split) == 3
         station_split = js_split[1].split("@")
         station_data_list = common.slice_list(station_split, start=1)
-        logger.debug("Fetched station list ({0} stations)".format(len(station_split)-1), response)
+        logger.debug("Fetched station list ({0} stations)".format(len(station_split)-1))
         return [Station(item.split("|")) for item in station_data_list]
 
     @staticmethod

@@ -5,6 +5,7 @@ from core import logger
 class SessionCookies(dict):
     @property
     def session_id(self):
+        # noinspection PyTypeChecker
         return self.get("JSESSIONID")
 
     @classmethod
@@ -18,10 +19,12 @@ class SessionCookies(dict):
     def __handle_other_cookie(name, value):
         pass
 
+    # noinspection PyUnusedLocal
     @staticmethod
     def __handle_session_id(name, value):
         logger.debug("Got new session ID: " + value)
 
+    # noinspection PyUnusedLocal
     @staticmethod
     def __handle_server_ip(name, value):
         logger.debug("Got new server IP: " + value)

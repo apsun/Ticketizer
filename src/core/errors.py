@@ -15,6 +15,10 @@ class PurchaseFailedError(Exception):
     pass
 
 
+class CaptchaUnsolvedError(Exception):
+    pass
+
+
 class StopPathSearch(Exception):
     pass
 
