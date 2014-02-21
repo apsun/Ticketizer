@@ -29,3 +29,7 @@ class StopCaptchaRetry(Exception):
 
 class UnfinishedTransactionError(Exception):
     pass
+
+
+class DataExpiredError(Exception):
+    pass

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import requests
 import urllib.parse
+from core import common, logger
 from core.auth.cookies import SessionCookies
 from core.errors import InvalidRequestError
-from core import common, logger
 
 
-def request(method, url, params=None, data=None, cookies=None):
+def request(method, url, **kwargs):
     def log_request():
         def dict_to_str(obj):
             if isinstance(obj, dict):
@@ -14,41 +14,51 @@ def request(method, url, params=None, data=None, cookies=None):
             else:
                 iterable = obj
             return "".join(map(lambda x: "\n   -> {0}: {1}".format(*x), iterable))
+
         log_values = ["[{0}] {1}".format(method.upper(), url)]
-        # noinspection PyTypeChecker
-        if params is not None and len(params) > 0:
-            log_values.append(" -> Params:" + dict_to_str(params))
-        if data is not None and len(data) > 0:
-            log_values.append(" -> Data:" + dict_to_str(data))
-        if cookies is not None and len(cookies) > 0:
-            log_values.append(" -> Cookies:" + dict_to_str(cookies))
+        for arg, value in kwargs.items():
+            if value is None:
+                continue
+            try:
+                if len(value) == 0:
+                    continue
+                value = dict_to_str(value)
+            except TypeError:
+                pass
+            log_values.append(" -> {0}: {1}".format(arg, value))
         logger.network("\n".join(log_values))
 
     log_request()
+    # headers = kwargs.get("headers", {})
+    # headers.setdefault("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
+    # headers.setdefault("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko")
+    # kwargs["headers"] = headers
+    params = kwargs.get("params")
     if isinstance(params, list):
         url += "?" + urllib.parse.urlencode(params)
-        params = None
-    response = requests.request(method, url, params=params, cookies=cookies, data=data, verify=False)
+        kwargs["params"] = None
+    response = requests.request(method, url, verify=False, **kwargs)
     response.raise_for_status()
+    cookies = kwargs.get("cookies")
     if isinstance(cookies, SessionCookies):
         cookies.update_cookies(response)
     return response
 
 
-def get(url, params=None, data=None, cookies=None):
-    return request("get", url, params=params, data=data, cookies=cookies)
+def get(url, **kwargs):
+    return request("get", url, **kwargs)
 
 
-def post(url, params=None, data=None, cookies=None):
-    return request("post", url, params=params, data=data, cookies=cookies)
+def post(url, **kwargs):
+    return request("post", url, **kwargs)
 
 
-def get_json(url, params=None, data=None, cookies=None):
-    return read_json(get(url, params=params, data=data, cookies=cookies))
+def get_json(url, **kwargs):
+    return read_json(get(url, **kwargs))
 
 
-def post_json(url, params=None, data=None, cookies=None):
-    return read_json(post(url, params=params, data=data, cookies=cookies))
+def post_json(url, **kwargs):
+    return read_json(post(url, **kwargs))
 
 
 def read_json(response):

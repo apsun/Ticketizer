@@ -1,31 +1,32 @@
 # -*- coding: utf-8 -*-
 import urllib.parse
+from core import common, webrequest, logger
 from core.enums import TicketPricing, TicketDirection
-from core.errors import UnfinishedTransactionError, InvalidRequestError, PurchaseFailedError
+from core.errors import UnfinishedTransactionError, DataExpiredError
+from core.errors import PurchaseFailedError, InvalidRequestError, InvalidOperationError
 from core.auth.captcha import Captcha, CaptchaType
 from core.data.credentials import Credentials
-from core import common, webrequest, logger
 
 
 class TicketPurchaser:
     def __init__(self, cookies):
         self.__cookies = cookies
+        self.__submit_token = None
         self.direction = TicketDirection.ONE_WAY
         self.pricing = TicketPricing.NORMAL
         self.train = None
 
-    def __get_purchase_captcha(self, submit_token):
-        check_params = self.__get_captcha_check_params(submit_token)
-        return Captcha(CaptchaType.PURCHASE, self.__cookies, check_params=check_params)
-
-    @staticmethod
-    def __get_captcha_check_params(submit_token):
+    def __get_captcha_check_params(self):
         return {
-            "REPEAT_SUBMIT_TOKEN": submit_token,
-            "_json_att": ""
+            "REPEAT_SUBMIT_TOKEN": self.__submit_token
         }
 
-    def __get_purchase_submit_params(self):
+    def __get_passenger_query_data(self):
+        return {
+            "REPEAT_SUBMIT_TOKEN": self.__submit_token
+        }
+
+    def __get_purchase_submit_data(self):
         return {
             "back_train_date": common.date_to_str(self.train.departure_time.date()),  # TODO
             "purpose_codes": self.pricing,
@@ -33,15 +34,7 @@ class TicketPurchaser:
             "query_to_station_name": self.train.destination_station.name,
             "secretStr": urllib.parse.unquote(self.train.secret_key),
             "tour_flag": self.direction,
-            "train_date": common.date_to_str(self.train.departure_time.date()),
-            "undefined": ""
-        }
-
-    @staticmethod
-    def __get_passenger_query_params(submit_token):
-        return {
-            "REPEAT_SUBMIT_TOKEN": submit_token,
-            "_json_att": ""
+            "train_date": common.date_to_str(self.train.departure_time.date())
         }
 
     @staticmethod
@@ -53,7 +46,7 @@ class TicketPurchaser:
             id_type=passenger.id_type,
             id_no=passenger.id_number,
             passenger_type="1",  # TODO
-            seat_type="M",
+            seat_type="2",
             ticket_type="1",
             phone_no=passenger.phone_number
         )
@@ -61,16 +54,15 @@ class TicketPurchaser:
         new_passenger_str = "_".join(map(lambda x: format_func(x, new_format), passenger_list))
         return old_passenger_str, new_passenger_str
 
-    def __get_check_order_params(self, passenger_list, submit_token, captcha_answer):
-        old_pass_str, new_pass_str = self.__get_passenger_strs(passenger_list)
+    def __get_check_order_data(self, passengers, captcha):
+        old_pass_str, new_pass_str = self.__get_passenger_strs(passengers)
         return {
-            "REPEAT_SUBMIT_TOKEN": submit_token,
-            "_json_att": "",
+            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
             "bed_level_order_num": "000000000000000000000000000000",
             "cancel_flag": "2",
             "oldPassengerStr": old_pass_str,
             "passengerTicketStr": new_pass_str,
-            "randCode": captcha_answer,
+            "randCode": captcha.answer,
             "tour_flag": self.direction
         }
 
@@ -81,15 +73,13 @@ class TicketPurchaser:
         }[self.direction]
 
     def __get_state_vars(self, url):
-        # WARNING: VERY HACKY THINGS AHEAD
-        # (and I'm not even using regex! >_<)
-        cookies = self.__cookies
-        response = webrequest.get(url, cookies=cookies, params={"_json_att": ""})
-        # We're reading the entire page contents into memory.
-        # This is a little bit inefficient, since the state
-        # vars are always near the top of the page.
+        response = webrequest.post(url, cookies=self.__cookies)
 
-        # Text content is as follows:
+        # TODO: Don't load entire contents of page into memory; stream the
+        # TODO: data until the state var block is found and load that region only.
+        # TODO: This can save a bit of memory (although not much...)
+
+        # Text content of response is as follows:
         # (note the space on each line other than the first)
         # ...
         # /*<![CDATA[*/
@@ -100,13 +90,6 @@ class TicketPurchaser:
         #  var isShowNotice = null;
         #  /*]]>*/
         # ...
-
-        # I personally would rather just eval the JS and
-        # get the values directly, but would rather not
-        # use another dependency to do it, so we just
-        # parse the string the hacky way. Honestly though,
-        # I doubt the internal code to build these vars
-        # is any better than this, knowing 12306...
         state_js_lines = common.between(response.text, "/*<![CDATA[*/\n", "\n /*]]>*/").splitlines()
         state_dict = {}
         for line in state_js_lines:
@@ -124,7 +107,7 @@ class TicketPurchaser:
                 state_dict[var_name] = var_value
                 logger.debug("Got state var: " + var_name + " = '" + var_value + "'")
             else:
-                # Only going to handle null and single-quote strings
+                # Only going to handle null and single-quoted strings
                 # so far; if anything changes, well... we're screwed.
                 # That means no expressions or anything like that.
                 assert False
@@ -132,41 +115,72 @@ class TicketPurchaser:
 
     def __submit_order_request(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest"
-        params = self.__get_purchase_submit_params()
-        cookies = self.__cookies
-        json = webrequest.post_json(url, params=params, cookies=cookies)
+        data = self.__get_purchase_submit_data()
+        json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         if json["status"] is not True:
-            # TODO: is this right?
             messages = json["messages"]
             for message in messages:
-                if str(message).startswith("您还有未处理的订单"):
+                if message.startswith("您还有未处理的订单"):
                     raise UnfinishedTransactionError()
+                elif message.startswith("车票信息已过期"):
+                    raise DataExpiredError()
             raise InvalidRequestError(common.join_list(messages))
 
-    def __get_passenger_list(self, submit_token):
-        url = "https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs"
-        params = self.__get_passenger_query_params(submit_token)
-        cookies = self.__cookies
-        json = webrequest.post_json(url, params=params, cookies=cookies)
-        passenger_data_list = json["data"]["normal_passengers"]
-        logger.debug("Fetched passenger list ({0} passengers)".format(len(passenger_data_list)))
-        return [Credentials(data) for data in passenger_data_list]
-
-    def __check_order_info(self, passenger_list, submit_token, captcha_answer):
+    def __check_order_info(self, passengers, captcha):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
-        params = self.__get_check_order_params(passenger_list, submit_token, captcha_answer)
-        json = webrequest.post_json(url, params=params)
+        data = self.__get_check_order_data(passengers, captcha)
+        json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         webrequest.check_json_flag(json, "data", "submitStatus", exception=PurchaseFailedError)
 
     def __get_queue_count(self):
         pass
 
-    def purchase_tickets(self, pasenger_selector, captcha_solver):
+    def __ensure_order_submitted(self):
+        if self.__submit_token is None:
+            raise InvalidOperationError("Order has not been submitted yet")
+
+    def get_purchase_captcha(self):
+        self.__ensure_order_submitted()
+        check_params = self.__get_captcha_check_params()
+        return Captcha(CaptchaType.PURCHASE, self.__cookies, check_params=check_params)
+
+    def get_passenger_list(self):
+        self.__ensure_order_submitted()
+        url = "https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs"
+        data = self.__get_passenger_query_data()
+        json = webrequest.post_json(url, data=data, cookies=self.__cookies)
+        passenger_data_list = json["data"]["normal_passengers"]
+        logger.debug("Fetched passenger list ({0} passengers)".format(len(passenger_data_list)))
+        return [Credentials(data) for data in passenger_data_list]
+
+    def begin_purchase(self):
+        # Due to the design of the 12306 API, we have to submit the
+        # purchase before getting the captcha. To avoid having to use
+        # a callback pattern to solve the captcha, the purchase process
+        # is split into 2 steps.
+
+        # How to use this API in a nutshell:
+        # 1. Submit the order
+        #    -> begin_purchase()
+        # 2. Get the captcha and passenger list
+        #    -> get_purchase_captcha() and get_passenger_list()
+        # 3. Solve the captcha and select passengers
+        #    -> (this part is for the client to implement)
+        # 4. Complete the order
+        #    -> continue_purchase()
+
+        # Note: If continue_purchase() throws an exception,
+        # you must call begin_purchase() again!
+        logger.debug("Purchasing tickets for train " + self.train.name)
         self.__submit_order_request()
         purchase_url = self.__get_purchase_confirm_url()
-        submit_token = self.__get_state_vars(purchase_url)["globalRepeatSubmitToken"]
-        passenger_list = self.__get_passenger_list(submit_token)
-        selected_passengers = pasenger_selector(passenger_list)
-        captcha = self.__get_purchase_captcha(submit_token)
-        captcha_answer = captcha.solve(captcha_solver).answer
-        self.__check_order_info(selected_passengers, submit_token, captcha_answer)
+        self.__submit_token = self.__get_state_vars(purchase_url)["globalRepeatSubmitToken"]
+
+    def continue_purchase(self, passengers, captcha):
+        self.__ensure_order_submitted()
+        try:
+            self.__check_order_info(passengers, captcha)
+            # TODO: FINISH THIS
+        except:
+            self.__submit_token = None
+            raise

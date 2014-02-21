@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from requests.exceptions import HTTPError
 from core import logger, common, webrequest
 from core.errors import StopCaptchaRetry, CaptchaUnsolvedError
 
@@ -85,8 +86,14 @@ class Captcha:
     def check_answer(self, answer):
         url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"
         data = self.__get_captcha_check_data(answer)
-        json_data = webrequest.post_json(url, data=data, cookies=self.__cookies)["data"]
-        success = common.is_true(json_data)
+        try:
+            json_data = webrequest.post_json(url, data=data, cookies=self.__cookies)["data"]
+            success = common.is_true(json_data)
+        except HTTPError as ex:
+            if ex.response.status_code == 406:
+                success = False
+            else:
+                raise
         if success:
             self.__answer = answer
         logger.debug("Captcha entered correctly (answer: {0}): {1}".format(answer, success))

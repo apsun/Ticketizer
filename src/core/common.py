@@ -14,10 +14,7 @@ def slice_list(iterable, start=None, end=None, step=None):
     # you can have them (only if you can natively call
     # len() on the iterable)
     if end is not None and end < 0:
-        try:
-            end %= len(iterable)
-        except TypeError:
-            pass
+        end %= len(iterable)
     # For some reason PyCharm thinks islice's constructor
     # has the signature __init__(iterable, end). This avoids
     # a warning every time you use itertools.islice.

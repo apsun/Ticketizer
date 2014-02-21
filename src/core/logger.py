@@ -15,8 +15,27 @@ class LogType:
         ERROR: "E"
     }
 
+# Optionally switch off some log types for
+# reduced log output verbosity
+__enabled_log_types = LogType.DEBUG | LogType.NETWORK | LogType.WARNING | LogType.ERROR
+
+
+def get_type_enabled(log_type):
+    return (__enabled_log_types & log_type) == log_type
+
+
+def set_type_enabled(log_type, enabled):
+    global __enabled_log_types
+    if enabled:
+        __enabled_log_types |= log_type
+    else:
+        __enabled_log_types &= ~log_type
+
 
 def log(log_type, msg):
+    if not get_type_enabled(log_type):
+        return
+
     # Whether to print the log verbosity
     enable_type = True
     # Whether to print the current time

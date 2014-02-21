@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# TODO: Inherit from CookieJar to automatically handle cookies,
+# TODO: but still retain logging abilities
 from core import logger
 
 
