@@ -92,7 +92,7 @@ class TicketType:
     }
 
     ID_LOOKUP = {
-        # OTHER:            "",
+        OTHER:            "E",
         NO_SEAT:          "W",
         HARD_SEAT:        "1",
         SOFT_SEAT:        "2",
@@ -106,7 +106,7 @@ class TicketType:
     }
 
     REVERSE_ID_LOOKUP = {
-        # "":  OTHER,
+        "E": OTHER,
         "W": NO_SEAT,
         "1": HARD_SEAT,
         "2": SOFT_SEAT,
@@ -114,13 +114,15 @@ class TicketType:
         "4": SOFT_SLEEPER,
         "6": SOFT_SLEEPER_PRO,
         "O": SECOND_CLASS,
+        "8": SECOND_CLASS,
         "M": FIRST_CLASS,
+        "7": FIRST_CLASS,
         "P": SPECIAL,
         "9": BUSINESS
     }
 
     REVERSE_ID2_LOOKUP = {
-        # "MIN": OTHER,
+        "MIN": OTHER,
         "WZ": NO_SEAT,
         "A1": HARD_SEAT,
         "A2": SOFT_SEAT,
@@ -157,8 +159,18 @@ class TicketStatus:
 
 
 class TicketPricing:
-    NORMAL = "ADULT"
-    STUDENT = "0X00"
+    NORMAL = 0
+    STUDENT = 1
+
+    SEARCH_LOOKUP = {
+        NORMAL: "ADULT",
+        STUDENT: "0X00"
+    }
+
+    PURCHASE_LOOKUP = {
+        NORMAL: "00",
+        STUDENT: "0X00"
+    }
 
 
 class TicketDirection:

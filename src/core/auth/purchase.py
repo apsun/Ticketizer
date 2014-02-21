@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import urllib.parse
 from core import common, webrequest, logger
-from core.enums import TicketPricing, TicketDirection
+from core.enums import TicketPricing, TicketDirection, PassengerType
 from core.errors import UnfinishedTransactionError, DataExpiredError
 from core.errors import PurchaseFailedError, InvalidRequestError, InvalidOperationError
 from core.auth.captcha import Captcha, CaptchaType
@@ -29,33 +29,35 @@ class TicketPurchaser:
     def __get_purchase_submit_data(self):
         return {
             "back_train_date": common.date_to_str(self.train.departure_time.date()),  # TODO
-            "purpose_codes": self.pricing,
+            "purpose_codes": TicketPricing.PURCHASE_LOOKUP[self.pricing],
             "query_from_station_name": self.train.departure_station.name,
             "query_to_station_name": self.train.destination_station.name,
-            "secretStr": urllib.parse.unquote(self.train.secret_key),
+            # Need to unescape this string or else it will become
+            # double-escaped when we send the request.
+            "secretStr": urllib.parse.unquote(self.train.data["secret_key"]),
             "tour_flag": self.direction,
             "train_date": common.date_to_str(self.train.departure_time.date())
         }
 
     @staticmethod
-    def __get_passenger_strs(passenger_list):
+    def __get_passenger_strs(passenger_dict):
         old_format = "{name},{id_type},{id_no},{passenger_type}"
         new_format = "{seat_type},0,{ticket_type},{name},{id_type},{id_no},{phone_no},N"
         format_func = lambda passenger, format_str: format_str.format(
             name=passenger.name,
             id_type=passenger.id_type,
             id_no=passenger.id_number,
-            passenger_type="1",  # TODO
-            seat_type="2",
-            ticket_type="1",
+            passenger_type=passenger.type,
+            seat_type=passenger_dict[passenger],
+            ticket_type=passenger.type,
             phone_no=passenger.phone_number
         )
-        old_passenger_str = "_".join(map(lambda x: format_func(x, old_format), passenger_list)) + "_"
-        new_passenger_str = "_".join(map(lambda x: format_func(x, new_format), passenger_list))
+        old_passenger_str = "_".join(map(lambda x: format_func(x, old_format), passenger_dict)) + "_"
+        new_passenger_str = "_".join(map(lambda x: format_func(x, new_format), passenger_dict))
         return old_passenger_str, new_passenger_str
 
-    def __get_check_order_data(self, passengers, captcha):
-        old_pass_str, new_pass_str = self.__get_passenger_strs(passengers)
+    def __get_check_order_data(self, passenger_dict, captcha):
+        old_pass_str, new_pass_str = self.__get_passenger_strs(passenger_dict)
         return {
             "REPEAT_SUBMIT_TOKEN": self.__submit_token,
             "bed_level_order_num": "000000000000000000000000000000",
@@ -64,6 +66,16 @@ class TicketPurchaser:
             "passengerTicketStr": new_pass_str,
             "randCode": captcha.answer,
             "tour_flag": self.direction
+        }
+
+    def __get_queue_count_data(self):
+        return {
+            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
+            "fromStationTelecode": self.train.departure_station.id,
+            "toStationTelecode": self.train.destination_station.id,
+            "leftTicket": self.train.ticket_count,
+            "purpose_codes": TicketPricing.PURCHASE_LOOKUP[self.train.pricing],
+            "seatType": None
         }
 
     def __get_purchase_confirm_url(self):
@@ -126,9 +138,9 @@ class TicketPurchaser:
                     raise DataExpiredError()
             raise InvalidRequestError(common.join_list(messages))
 
-    def __check_order_info(self, passengers, captcha):
+    def __check_order_info(self, passenger_dict, captcha):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
-        data = self.__get_check_order_data(passengers, captcha)
+        data = self.__get_check_order_data(passenger_dict, captcha)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         webrequest.check_json_flag(json, "data", "submitStatus", exception=PurchaseFailedError)
 
@@ -167,7 +179,9 @@ class TicketPurchaser:
         # 3. Solve the captcha and select passengers
         #    -> (this part is for the client to implement)
         # 4. Complete the order
-        #    -> continue_purchase()
+        #    -> continue_purchase(passenger_dict, captcha)
+        #       -> passenger_dict: maps passengers to tickets
+        #       -> captcha: a solved captcha object
 
         # Note: If continue_purchase() throws an exception,
         # you must call begin_purchase() again!
@@ -176,10 +190,10 @@ class TicketPurchaser:
         purchase_url = self.__get_purchase_confirm_url()
         self.__submit_token = self.__get_state_vars(purchase_url)["globalRepeatSubmitToken"]
 
-    def continue_purchase(self, passengers, captcha):
+    def continue_purchase(self, passenger_dict, captcha):
         self.__ensure_order_submitted()
         try:
-            self.__check_order_info(passengers, captcha)
+            self.__check_order_info(passenger_dict, captcha)
             # TODO: FINISH THIS
         except:
             self.__submit_token = None

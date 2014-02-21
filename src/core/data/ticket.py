@@ -57,6 +57,7 @@ class Ticket:
 
 
 class TicketCount:
+    # TODO: REMOVE THIS CLASS
     def __init__(self, count_string):
         # Since all the workers at 12306 have a combined IQ of "banana",
         # I have to wrap their stupidity with this class (which is just as stupid).

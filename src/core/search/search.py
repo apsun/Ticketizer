@@ -43,7 +43,7 @@ class TrainQuery:
             ("leftTicketDTO.train_date", common.date_to_str(self.date)),
             ("leftTicketDTO.from_station", self.departure_station.id),
             ("leftTicketDTO.to_station", self.destination_station.id),
-            ("purpose_codes", self.pricing)
+            ("purpose_codes", TicketPricing.SEARCH_LOOKUP[self.pricing])
         ]
 
     def execute(self):
@@ -64,7 +64,7 @@ class TrainQuery:
                 continue
             if self.exact_destination_station and destination_station != self.destination_station:
                 continue
-            train = Train(combined_data, departure_station, destination_station)
+            train = Train(combined_data, departure_station, destination_station, self.pricing, self.direction)
             if self.ignore_buggy_results and train.departure_time.date() != self.date:
                 continue
             train_list.append(train)
