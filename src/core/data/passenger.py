@@ -2,7 +2,7 @@
 from core.enums import PassengerType, IdentificationType
 
 
-class Credentials:
+class Passenger:
     def __init__(self, passenger_data):
         self.name = passenger_data["passenger_name"]
         self.gender = passenger_data["sex_code"]

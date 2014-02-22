@@ -1,6 +1,5 @@
 .idea/
-ui/
 *.pyc
 captcha.jpg
-main.py
+config.cfg
 run_cli.bat

@@ -7,31 +7,20 @@ from core.data.train import Train
 class TrainQuery:
     def __init__(self, station_list):
         # Station list, required for train initialization
-        self.station_list = station_list
+        self.__station_list = station_list
         # The type of ticket pricing -- normal ("adult") or student
         self.pricing = TicketPricing.NORMAL
         # The trip type -- one-direction or round-trip
         self.direction = TicketDirection.ONE_WAY
         # The departure date -- datetime.date (or a str in the format YYYY-mm-dd)
         self.date = None
-        # The departure station -- data.Station (or use the station ID)
+        # The departure station -- data.Station (or use the station ID/name/pinyin)
         self.departure_station = None
-        # The destination station -- data.Station (or use the station ID)
+        # The destination station -- data.Station (or use the station ID/name/pinyin)
         self.destination_station = None
         # Optionally disable the "fuzzy station search" feature
         self.exact_departure_station = False
         self.exact_destination_station = False
-
-    def __ensure_param_types(self):
-        if isinstance(self.date, str):
-            self.date = common.str_to_date(self.date)
-            logger.warning("Using date string instead of object")
-        if isinstance(self.departure_station, str):
-            self.departure_station = self.station_list.get_by_id(self.departure_station)
-            logger.warning("Using departure station ID instead of object")
-        if isinstance(self.destination_station, str):
-            self.destination_station = self.station_list.get_by_id(self.destination_station)
-            logger.warning("Using destination station ID instead of object")
 
     def __get_query_string(self):
         return [
@@ -42,7 +31,6 @@ class TrainQuery:
         ]
 
     def execute(self):
-        self.__ensure_param_types()
         url = "https://kyfw.12306.cn/otn/leftTicket/query"
         params = self.__get_query_string()
         json_data = webrequest.get_json(url, params=params)["data"]
@@ -53,8 +41,8 @@ class TrainQuery:
         train_list = []
         for train_data in json_data:
             raw_data = common.flatten_dict(train_data)
-            departure_station = self.station_list.get_by_id(raw_data["from_station_telecode"])
-            destination_station = self.station_list.get_by_id(raw_data["to_station_telecode"])
+            departure_station = self.__station_list.get_by_id(raw_data["from_station_telecode"])
+            destination_station = self.__station_list.get_by_id(raw_data["to_station_telecode"])
             if self.exact_departure_station and departure_station != self.departure_station:
                 continue
             if self.exact_destination_station and destination_station != self.destination_station:

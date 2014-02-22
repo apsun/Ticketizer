@@ -37,7 +37,7 @@ class StationList:
             self.name_lookup = {station.name: station for station in self.stations}
             self.id_lookup = {station.id: station for station in self.stations}
             self.pinyin_lookup = {station.pinyin: station for station in self.stations}
-            self.abbreviation_lookup = {station.abbreviation: station for station in self.stations}
+            self.abbreviation_lookup = self.__generate_abbreviation_lookup(self.stations)
         else:
             self.name_lookup = None
             self.id_lookup = None
@@ -55,6 +55,15 @@ class StationList:
         station_list = [Station(item.split("|")) for item in station_data_list]
         logger.debug("Fetched station list ({0} stations)".format(len(station_list)))
         return station_list
+
+    @staticmethod
+    def __generate_abbreviation_lookup(station_list):
+        lookup = {}
+        for station in station_list:
+            existing = lookup.get(station.abbreviation, [])
+            existing.append(station)
+            lookup[station.abbreviation] = existing
+        return lookup
 
     def get_by_name(self, station_name):
         if self.name_lookup is None:
@@ -84,11 +93,14 @@ class StationList:
             return self.pinyin_lookup[station_pinyin]
 
     def get_by_abbreviation(self, station_abbreviation):
+        # Note that abbreviations have a one-to-many
+        # relationship, and you will have to selecct a
+        # station manually from the returned list.
         if self.abbreviation_lookup is None:
-            for station in self.stations:
-                if station.abbreviation == station_abbreviation:
-                    return station
-            raise KeyError()
+            stations = [s for s in self.stations if s.abbreviation == station_abbreviation]
+            if len(stations) == 0:
+                raise KeyError()
+            return stations
         else:
             return self.pinyin_lookup[station_abbreviation]
 

@@ -7,7 +7,7 @@ from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
 from core.errors import UnfinishedTransactionError, DataExpiredError, StopPurchaseQueue
 from core.errors import PurchaseFailedError, InvalidRequestError, InvalidOperationError
 from core.auth.captcha import Captcha, CaptchaType
-from core.data.credentials import Credentials
+from core.data.passenger import Passenger
 
 
 class TicketPurchaser:
@@ -214,7 +214,7 @@ class TicketPurchaser:
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         passenger_data_list = json["data"]["normal_passengers"]
         logger.debug("Fetched passenger list ({0} passengers)".format(len(passenger_data_list)))
-        return [Credentials(data) for data in passenger_data_list]
+        return [Passenger(data) for data in passenger_data_list]
 
     def begin_purchase(self):
         # Due to the design of the 12306 API, we have to submit the
@@ -252,7 +252,7 @@ class TicketPurchaser:
             self.__confirm_purchase(passenger_strs, captcha)
             order_id = self.__wait_for_queue(queue_callback)
             if order_id is not None:
-                self.__get_queue_result_data(order_id)
+                self.__get_queue_result(order_id)
             self.__submit_token = None
             self.__purchase_key = None
             return order_id
