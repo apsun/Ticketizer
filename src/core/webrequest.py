@@ -29,10 +29,6 @@ def request(method, url, **kwargs):
         logger.network("\n".join(log_values))
 
     log_request()
-    # headers = kwargs.get("headers", {})
-    # headers.setdefault("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-    # headers.setdefault("User-Agent", "Mozilla/5.0 (Windows NT 6.1; Trident/7.0; rv:11.0) like Gecko")
-    # kwargs["headers"] = headers
     params = kwargs.get("params")
     if isinstance(params, list):
         url += "?" + urllib.parse.urlencode(params)

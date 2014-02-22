@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
+# TODO: Return variables required to auto-open the purchase site
 import urllib.parse
-import random
 import re
 from core import common, webrequest, logger
 from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
@@ -31,7 +31,7 @@ class TicketPurchaser:
 
     def __get_purchase_submit_data(self):
         return {
-            "back_train_date": common.date_to_str(self.train.departure_time.date()),  # TODO
+            "back_train_date": common.date_to_str(self.train.departure_time.date()),  # TODO: Implement
             "purpose_codes": TicketPricing.PURCHASE_LOOKUP[self.pricing],
             "query_from_station_name": self.train.departure_station.name,
             "query_to_station_name": self.train.destination_station.name,
@@ -54,7 +54,7 @@ class TicketPurchaser:
             "tour_flag": self.direction
         }
 
-    def __get_queue_count_data(self, passenger_dict):
+    def __get_queue_count_data(self, passenger_strs):
         date_str = self.train.departure_time.date().strftime(
             "%a %b %d %Y 00:00:00 GMT+0800 (China Standard Time)")
         return {
@@ -63,7 +63,9 @@ class TicketPurchaser:
             "toStationTelecode": self.train.destination_station.id,
             "leftTicket": self.train.data["ticket_count"],
             "purpose_codes": TicketPricing.PURCHASE_LOOKUP[self.train.pricing],
-            "seatType": TicketType.ID_LOOKUP[random.choice(list(passenger_dict.values())).type],  # TODO: refactor
+            # Relying on the fact that the first character of
+            # the new-type passenger string is a ticket type ID.
+            "seatType": passenger_strs[1][0],
             "stationTrainCode": self.train.name,
             "train_no": self.train.id,
             "train_date": date_str
@@ -85,7 +87,6 @@ class TicketPurchaser:
     def __get_queue_time_params(self):
         return {
             "REPEAT_SUBMIT_TOKEN": self.__submit_token,
-            # "random": int(time.time()),
             "tourFlag": self.direction
         }
 
@@ -158,19 +159,19 @@ class TicketPurchaser:
             raise PurchaseFailedError("Too many people in queue")
         queue_length = int(json["data"]["countT"])
         if queue_length > 0:
-            logger.debug("{0} people in queue".format(queue_length))
+            logger.debug("{0} people left in queue".format(queue_length))
 
     def __confirm_purchase(self, passenger_strs, captcha):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue"
         data = self.__get_confirm_purchase_data(passenger_strs, captcha)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        webrequest.check_json_flag(json, "data", "submitStatus", PurchaseFailedError)
+        webrequest.check_json_flag(json, "data", "submitStatus", exception=PurchaseFailedError)
 
     def __get_queue_data(self):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime"
         params = self.__get_queue_time_params()
         json = webrequest.get_json(url, params=params, cookies=self.__cookies)
-        webrequest.check_json_flag(json, "data", "queryOrderWaitTimeStatus", PurchaseFailedError)
+        webrequest.check_json_flag(json, "data", "queryOrderWaitTimeStatus", exception=PurchaseFailedError)
         return json["data"]["waitCount"], json["data"].get("orderId")
 
     def __wait_for_queue(self, callback):
@@ -187,7 +188,7 @@ class TicketPurchaser:
         url = "https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue"
         data = self.__get_queue_result_data(order_id)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        webrequest.check_json_flag(json, "data", "submitStatus", PurchaseFailedError)
+        webrequest.check_json_flag(json, "data", "submitStatus", exception=PurchaseFailedError)
 
     def __ensure_order_submitted(self):
         if self.__submit_token is None:
@@ -195,6 +196,8 @@ class TicketPurchaser:
 
     @staticmethod
     def __ensure_tickets_valid(passenger_dict):
+        if len(passenger_dict) == 0:
+            raise InvalidOperationError("No passengers selected")
         for ticket in passenger_dict.values():
             if ticket.status != TicketStatus.NORMAL:
                 raise InvalidOperationError("Invalid ticket selection")
@@ -245,7 +248,7 @@ class TicketPurchaser:
             self.__ensure_tickets_valid(passenger_dict)
             passenger_strs = self.__get_passenger_strs(passenger_dict)
             self.__check_order_info(passenger_strs, captcha)
-            self.__get_queue_count(passenger_dict)
+            self.__get_queue_count(passenger_strs)
             self.__confirm_purchase(passenger_strs, captcha)
             order_id = self.__wait_for_queue(queue_callback)
             if order_id is not None:

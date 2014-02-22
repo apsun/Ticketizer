@@ -145,7 +145,7 @@ class TicketStatus:
     TEXT_LOOKUP = {
         NOT_APPLICABLE: "--",
         NOT_YET_SOLD:   "*",
-        SOLD_OUT:       "无"
+        # SOLD_OUT:       "无"
     }
 
     REVERSE_TEXT_LOOKUP = {
@@ -198,9 +198,9 @@ class PassengerType:
     DISABLED = "4"
 
     TEXT_LOOKUP = {
-        ADULT: "成人",
-        CHILD: "儿童",
-        STUDENT: "学生",
+        ADULT:    "成人",
+        CHILD:    "儿童",
+        STUDENT:  "学生",
         DISABLED: "残疾军人"
     }
 
@@ -210,6 +210,6 @@ class Gender:
     FEMALE = "F"
 
     TEXT_LOOKUP = {
-        MALE: "男",
+        MALE:   "男",
         FEMALE: "女"
     }

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from requests.exceptions import HTTPError
 from core import logger, common, webrequest
-from core.errors import StopCaptchaRetry, CaptchaUnsolvedError
+from core.errors import CaptchaUnsolvedError
 
 
 class CaptchaType:
@@ -67,21 +67,6 @@ class Captcha:
         content_type = response.headers["Content-Type"].split(";")[0]
         assert content_type == "image/jpeg"
         return response.content
-
-    def solve(self, solver):
-        while True:
-            # Call the captcha solver function.
-            # This function is an implementation detail of the client program,
-            # which means they are free to return the value however they want.
-            # It can be an OCR program, TextBox value, console input, etc.
-            try:
-                captcha_answer = solver(self.image_data)
-            except StopCaptchaRetry:
-                captcha_answer = None
-            if captcha_answer is None or self.check_answer(captcha_answer):
-                # Return self to allow fluent API calls, such as the following:
-                # captcha = get_captcha().solve(captcha_solver_func)
-                return self
 
     def check_answer(self, answer):
         url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"

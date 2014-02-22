@@ -23,7 +23,7 @@ class Ticket:
         self.train = train
         # The seat type (from TicketType enum)
         self.type = ticket_type
-        # The number of tickets remaining (
+        # The number of tickets remaining
         self.count = count_num
         # Ticket status: not yet sold, sold out, or normal
         self.status = TicketStatus.REVERSE_TEXT_LOOKUP.get(count_text, TicketStatus.NORMAL)

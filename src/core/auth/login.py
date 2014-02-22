@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# TODO: Maybe inherit from requests.Session?
 from core import logger, webrequest
 from core.errors import LoginFailedError, InvalidOperationError
 from core.auth.cookies import SessionCookies
@@ -38,13 +37,9 @@ class LoginManager:
         return TicketPurchaser(self.__cookies)
 
     def login(self, email, password, captcha):
-        # Submit user credentials to the server
         data = self.__get_login_params(email, password, captcha.answer)
         url = "https://kyfw.12306.cn/otn/login/loginUserAsyn"
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        # Check server response to see if login was successful
-        # response > data > loginCheck should be "Y" if we logged in
-        # otherwise, loginCheck will be absent
         webrequest.check_json_flag(json, "data", "status", exception=LoginFailedError)
         username = json["data"]["username"]
         logger.debug("Successfully logged in with username " + username)

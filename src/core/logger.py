@@ -3,10 +3,12 @@ from datetime import datetime
 
 
 class LogType:
+    NONE = 0
     DEBUG = 1
     NETWORK = 2
     WARNING = 4
     ERROR = 8
+    ALL = 15
 
     NAME_LOOKUP = {
         DEBUG: "D",
@@ -17,7 +19,7 @@ class LogType:
 
 # Optionally switch off some log types for
 # reduced log output verbosity
-__enabled_log_types = LogType.DEBUG | LogType.NETWORK | LogType.WARNING | LogType.ERROR
+__enabled_log_types = LogType.ALL
 
 
 def get_type_enabled(log_type):

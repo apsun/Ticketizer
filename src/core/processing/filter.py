@@ -5,9 +5,12 @@ from core.processing.containers import BitFlags, FlagSet, ValueRange
 
 class TrainFilter:
     def __init__(self):
-        # TODO: Add a whitelist feature
         # Filter to ignore certain train types
         self.enabled_types = BitFlags(TrainType.ALL, TrainType.ALL, TrainType.NONE)
+        # If any trains are added to this set, they will be returned,
+        # regardless of whether they meet other criteria. To ONLY allow trains
+        # in this list to appear, simply set enabled_types to TrainType.NONE.
+        self.whitelist = FlagSet()
         # Add train names (e.g. "T110") to this list to ignore them
         self.blacklist = FlagSet()
         # Departure and arrival time filters. Trains that depart/arrive
@@ -20,6 +23,8 @@ class TrainFilter:
         self.ticket_filter = TicketFilter()
 
     def check(self, train):
+        if self.whitelist[train.name]:
+            return True
         if self.blacklist[train.name]:
             return False
         if not self.enabled_types[train.type]:

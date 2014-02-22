@@ -72,7 +72,7 @@ class Train:
             count_int = int(ticket_count[6:])
             if count_int >= 3000:
                 # If the ticket count >= 3000, the count
-                # refers to the 无座 ticket type
+                # refers to the no-seat ticket type
                 type_value = TicketType.NO_SEAT
                 count_int -= 3000
             else:
@@ -131,15 +131,21 @@ class Train:
         for key, value in json["data"].items():
             if not isinstance(value, str):
                 continue
-            ticket_type = TicketType.REVERSE_ID2_LOOKUP.get(key)
+            if value[0] == "¥" and value[-2] == ".":
+                num_value = float(value[1:])
+                lookup = TicketType.REVERSE_ID2_LOOKUP
+            else:
+                try:
+                    num_value = int(value)/10
+                    lookup = TicketType.REVERSE_ID_LOOKUP
+                except ValueError:
+                    continue
+            ticket_type = lookup.get(key)
             if ticket_type is None:
                 continue
             if self.tickets[ticket_type].status == TicketStatus.NOT_APPLICABLE:
                 continue
-            # Ensure that price is in the format ¥XXX.X
-            assert value[0] == "¥"
-            assert value[-2] == "."
-            self.tickets[ticket_type].price = float(value[1:])
+            self.tickets[ticket_type].price = num_value
         self.ticket_prices_fetched = True
         logger.debug("Fetched ticket prices for train " + self.name)
 
