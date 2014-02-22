@@ -39,6 +39,8 @@ class Train:
         # purchasing tickets.
         self.data = {
             # Used for buying tickets.
+            "location_code": raw_data["location_code"],
+            # Used for buying tickets (also holds ticket count data).
             "ticket_count": raw_data["yp_info"],
             # Used for querying ticket prices.
             "seat_types": raw_data["seat_types"],

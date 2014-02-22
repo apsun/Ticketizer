@@ -7,7 +7,7 @@ class TrainFilter:
     def __init__(self):
         # TODO: Add a whitelist feature
         # Filter to ignore certain train types
-        self.type_filter = BitFlags(TrainType.ALL, TrainType.ALL, TrainType.NONE)
+        self.enabled_types = BitFlags(TrainType.ALL, TrainType.ALL, TrainType.NONE)
         # Add train names (e.g. "T110") to this list to ignore them
         self.blacklist = FlagSet()
         # Departure and arrival time filters. Trains that depart/arrive
@@ -22,7 +22,7 @@ class TrainFilter:
     def check(self, train):
         if self.blacklist[train.name]:
             return False
-        if not self.type_filter[train.type]:
+        if not self.enabled_types[train.type]:
             return False
         if not self.departure_time_range.check(train.departure_time.time()):
             return False
@@ -41,7 +41,7 @@ class TrainFilter:
 class TicketFilter:
     def __init__(self):
         # Type mask to filter ticket types
-        self.type_filter = BitFlags(TicketType.ALL, TicketType.ALL, TicketType.NONE)
+        self.enabled_types = BitFlags(TicketType.ALL, TicketType.ALL, TicketType.NONE)
         # Price filter. Tickets with prices outside
         # this range will be ignored. (ValueRange)
         self.price_range = ValueRange()
@@ -58,7 +58,7 @@ class TicketFilter:
             return False
         if self.filter_not_yet_sold and ticket_status == TicketStatus.NOT_YET_SOLD:
             return False
-        if not self.type_filter[ticket.type]:
+        if not self.enabled_types[ticket.type]:
             return False
         if not self.price_range.check(lambda: ticket.price):
             return False
