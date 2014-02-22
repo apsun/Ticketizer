@@ -5,6 +5,7 @@ from core.processing.containers import BitFlags, FlagSet, ValueRange
 
 class TrainFilter:
     def __init__(self):
+        # TODO: Add a whitelist feature
         # Filter to ignore certain train types
         self.type_filter = BitFlags(TrainType.ALL, TrainType.ALL, TrainType.NONE)
         # Add train names (e.g. "T110") to this list to ignore them
@@ -29,7 +30,7 @@ class TrainFilter:
             return False
         if not self.duration_range.check(train.duration):
             return False
-        if len(self.ticket_filter.filter(train.tickets)):
+        if len(self.ticket_filter.filter(train.tickets)) == 0:
             return False
         return True
 
@@ -50,14 +51,14 @@ class TicketFilter:
         self.filter_sold_out = False
 
     def check(self, ticket):
-        ticket_status = ticket.count.status
+        ticket_status = ticket.status
         if ticket_status == TicketStatus.NOT_APPLICABLE:
             return False
         if self.filter_sold_out and ticket_status == TicketStatus.SOLD_OUT:
             return False
         if self.filter_not_yet_sold and ticket_status == TicketStatus.NOT_YET_SOLD:
             return False
-        if self.type_filter[ticket.type]:
+        if not self.type_filter[ticket.type]:
             return False
         if not self.price_range.check(lambda: ticket.price):
             return False

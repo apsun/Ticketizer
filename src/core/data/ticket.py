@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from numbers import Number
 from core.enums import TicketStatus, TicketType
 
 
@@ -19,13 +18,19 @@ class TicketList:
 
 
 class Ticket:
-    def __init__(self, train, ticket_type, count):
+    def __init__(self, train, ticket_type, count_text, count_num):
         # The train this object corresponds to
         self.train = train
         # The seat type (from TicketType enum)
         self.type = ticket_type
-        # The number of tickets remaining as a TicketCount class
-        self.count = count
+        # The number of tickets remaining (
+        self.count = count_num
+        # Ticket status: not yet sold, sold out, or normal
+        self.status = TicketStatus.REVERSE_TEXT_LOOKUP.get(count_text, TicketStatus.NORMAL)
+        if self.status != TicketStatus.NORMAL:
+            assert count_num == 0
+        else:
+            assert count_num != 0
         # The price of the ticket, as a double (e.g 546.23)
         # Note that this is None until explicitly refreshed, because
         # each train needs to query for its ticket prices individually,
@@ -43,64 +48,9 @@ class Ticket:
     def price(self, value):
         self.__price = value
 
-    @property
-    def status(self):
-        return self.count.status
-
     def __str__(self):
-        return "{0} -> {1} (status: {2}, count: {3})".format(
+        return "{0} -> {1} (count: {2})".format(
             self.train.name,
             TicketType.FULL_NAME_LOOKUP[self.type],
-            TicketStatus.TEXT_LOOKUP[self.status],
-            self.count
+            TicketStatus.TEXT_LOOKUP.get(self.status, str(self.count))
         )
-
-
-class TicketCount:
-    # TODO: REMOVE THIS CLASS
-    def __init__(self, count_string):
-        # Since all the workers at 12306 have a combined IQ of "banana",
-        # I have to wrap their stupidity with this class (which is just as stupid).
-        # It just provides easier comparisons against cases such as "有" or "无".
-        # (Who the heck thought that was a good idea? Why not just give a number?)
-        status = TicketStatus
-        self.status = status.REVERSE_TEXT_LOOKUP.get(count_string, status.NORMAL)
-        if self.status == status.LARGE_COUNT:
-            self.value = float("inf")
-        elif self.status == status.NORMAL:
-            self.value = int(count_string)
-        else:
-            self.value = 0
-
-    def __lt__(self, other):
-        if isinstance(other, Number):
-            return self.value < other
-        if isinstance(other, TicketCount):
-            return self.value < other.value
-        raise TypeError()
-
-    def __le__(self, other):
-        if isinstance(other, Number):
-            return self.value <= other
-        if isinstance(other, TicketCount):
-            return self.value <= other.value
-        raise TypeError()
-
-    def __gt__(self, other):
-        return not (self <= other)
-
-    def __ge__(self, other):
-        return not (self < other)
-
-    def __eq__(self, other):
-        if isinstance(other, Number):
-            return self.value == other
-        if isinstance(other, TicketCount):
-            return self.value == other.value
-        raise TypeError()
-
-    def __ne__(self, other):
-        return not (self == other)
-
-    def __str__(self):
-        return TicketStatus.TEXT_LOOKUP.get(self.status, str(self.value))

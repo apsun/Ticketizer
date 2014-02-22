@@ -139,21 +139,18 @@ class TicketType:
 class TicketStatus:
     NOT_APPLICABLE = 0
     NOT_YET_SOLD = 1
-    LARGE_COUNT = 2
-    SOLD_OUT = 3
-    NORMAL = 4
+    SOLD_OUT = 2
+    NORMAL = 3
 
     TEXT_LOOKUP = {
         NOT_APPLICABLE: "--",
         NOT_YET_SOLD:   "*",
-        LARGE_COUNT:    "有",
         SOLD_OUT:       "无"
     }
 
     REVERSE_TEXT_LOOKUP = {
         "--": NOT_APPLICABLE,
         "*":  NOT_YET_SOLD,
-        "有": LARGE_COUNT,
         "无": SOLD_OUT
     }
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import urllib.parse
 from core import common, webrequest, logger
-from core.enums import TicketPricing, TicketDirection, PassengerType
+from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
 from core.errors import UnfinishedTransactionError, DataExpiredError
 from core.errors import PurchaseFailedError, InvalidRequestError, InvalidOperationError
 from core.auth.captcha import Captcha, CaptchaType
@@ -48,7 +48,7 @@ class TicketPurchaser:
             id_type=passenger.id_type,
             id_no=passenger.id_number,
             passenger_type=passenger.type,
-            seat_type=passenger_dict[passenger],
+            seat_type=TicketType.ID_LOOKUP[passenger_dict[passenger].type],
             ticket_type=passenger.type,
             phone_no=passenger.phone_number
         )
@@ -151,6 +151,12 @@ class TicketPurchaser:
         if self.__submit_token is None:
             raise InvalidOperationError("Order has not been submitted yet")
 
+    @staticmethod
+    def __ensure_tickets_valid(passenger_dict):
+        for ticket in passenger_dict.values():
+            if ticket.status != TicketStatus.NORMAL:
+                raise InvalidOperationError("Invalid ticket selection")
+
     def get_purchase_captcha(self):
         self.__ensure_order_submitted()
         check_params = self.__get_captcha_check_params()
@@ -193,6 +199,7 @@ class TicketPurchaser:
     def continue_purchase(self, passenger_dict, captcha):
         self.__ensure_order_submitted()
         try:
+            self.__ensure_tickets_valid(passenger_dict)
             self.__check_order_info(passenger_dict, captcha)
             # TODO: FINISH THIS
         except:

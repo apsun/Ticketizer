@@ -2,11 +2,11 @@
 from datetime import datetime, timedelta
 from core import logger, common, webrequest
 from core.enums import TrainType, TicketType, TicketStatus
-from core.data.ticket import Ticket, TicketCount, TicketList
+from core.data.ticket import Ticket, TicketList
 
 
 class Train:
-    def __init__(self, raw_data, departure_station, destination_station, pricing, direction):
+    def __init__(self, raw_data, departure_station, destination_station, pricing, direction, date):
         # The user-friendly name of the train (e.g. T546)
         self.name = raw_data["station_train_code"]
         # The unique internal identifier of the train (e.g. 5l000D220200)
@@ -22,7 +22,9 @@ class Train:
         # The train direction (one-way/round-trip) used when searching for this train
         self.direction = direction
         # The departure time of the train (datetime.datetime)
-        self.departure_time = common.str_to_datetime(raw_data["start_train_date"], raw_data["start_time"], "%Y%m%d")
+        # The date must be passed in from the query because 12306
+        # has a bug where the incorrect date is returned in the data.
+        self.departure_time = common.str_to_datetime(date, raw_data["start_time"])
         # The length of the trip (datetime.timedelta)
         self.duration = timedelta(minutes=int(raw_data["lishiValue"]))
         # The arrival time of the train (datetime.datetime)
@@ -49,15 +51,16 @@ class Train:
         # A dictionary mapping each ticket type to a Ticket object.
         # Even if the train does not have that ticket type,
         # an object should still be created for it.
-        self.tickets = TicketList(self.__get_ticket_dict(self, raw_data, self.__parse_ticket_count(raw_data["yp_info"])))
+        self.tickets = TicketList(self.__get_ticket_dict(raw_data))
         # Set the ticket selling time
         self.begin_selling_time = self.__get_begin_selling_time(self.tickets, raw_data)
         # A flag to see whether we have already fetched ticket prices.
-        self.__ticket_prices_fetched = False
+        self.ticket_prices_fetched = False
 
     @staticmethod
-    def __parse_ticket_count(ticket_count_str):
+    def __parse_ticket_count(raw_data):
         # WTF, 12306! Ever heard of CSV? Arrays? ANYTHING but this?!
+        ticket_count_str = raw_data["yp_info"]
         # Each entry is 10 characters long (or at least, it better be...)
         assert len(ticket_count_str) % 10 == 0
         ticket_counts = [ticket_count_str[i:i+10] for i in range(0, len(ticket_count_str), 10)]
@@ -76,13 +79,13 @@ class Train:
             counts[type_value] = count_int
         return counts
 
-    @staticmethod
-    def __get_ticket_dict(train, data_dict, count_dict):
+    def __get_ticket_dict(self, raw_data):
+        count_data = self.__parse_ticket_count(raw_data)
         tickets = {}
         for key, value in TicketType.REVERSE_ABBREVIATION_LOOKUP.items():
-            # ticket_count = TicketCount(data_dict[key + "_num"])
-            ticket_count = TicketCount(str(count_dict.get(value, 0)))
-            tickets[value] = Ticket(train, value, ticket_count)
+            ticket_count_text = raw_data[key + "_num"]
+            ticket_count_num = count_data.get(value, 0)
+            tickets[value] = Ticket(self, value, ticket_count_text, ticket_count_num)
         return tickets
 
     @staticmethod
@@ -98,7 +101,7 @@ class Train:
         # not yet sold. Make sure this is the latter case.
         not_yet_sold = False
         for ticket in tickets:
-            if ticket.count.status == TicketStatus.NOT_YET_SOLD:
+            if ticket.status == TicketStatus.NOT_YET_SOLD:
                 not_yet_sold = True
                 break
         if not not_yet_sold:
@@ -129,13 +132,13 @@ class Train:
             ticket_type = TicketType.REVERSE_ID2_LOOKUP.get(key)
             if ticket_type is None:
                 continue
-            if self.tickets[ticket_type].count.status == TicketStatus.NOT_APPLICABLE:
+            if self.tickets[ticket_type].status == TicketStatus.NOT_APPLICABLE:
                 continue
             # Ensure that price is in the format ¥XXX.X
             assert value[0] == "¥"
             assert value[-2] == "."
             self.tickets[ticket_type].price = float(value[1:])
-        self.__ticket_prices_fetched = True
+        self.ticket_prices_fetched = True
         logger.debug("Fetched ticket prices for train " + self.name)
 
     def __str__(self):
