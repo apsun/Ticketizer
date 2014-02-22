@@ -4,7 +4,7 @@ import random
 import re
 from core import common, webrequest, logger
 from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
-from core.errors import UnfinishedTransactionError, DataExpiredError
+from core.errors import UnfinishedTransactionError, DataExpiredError, StopPurchaseQueue
 from core.errors import PurchaseFailedError, InvalidRequestError, InvalidOperationError
 from core.auth.captcha import Captcha, CaptchaType
 from core.data.credentials import Credentials
@@ -55,14 +55,15 @@ class TicketPurchaser:
         }
 
     def __get_queue_count_data(self, passenger_dict):
-        date_str = self.train.departure_time.date().strftime("%a %b %d %Y 00:00:00 GMT+0800 (China Standard Time)")
+        date_str = self.train.departure_time.date().strftime(
+            "%a %b %d %Y 00:00:00 GMT+0800 (China Standard Time)")
         return {
             "REPEAT_SUBMIT_TOKEN": self.__submit_token,
             "fromStationTelecode": self.train.departure_station.id,
             "toStationTelecode": self.train.destination_station.id,
             "leftTicket": self.train.data["ticket_count"],
             "purpose_codes": TicketPricing.PURCHASE_LOOKUP[self.train.pricing],
-            "seatType": TicketType.ID_LOOKUP[random.choice(list(passenger_dict.values())).type],
+            "seatType": TicketType.ID_LOOKUP[random.choice(list(passenger_dict.values())).type],  # TODO: refactor
             "stationTrainCode": self.train.name,
             "train_no": self.train.id,
             "train_date": date_str
@@ -81,24 +82,24 @@ class TicketPurchaser:
             "randCode": captcha.answer
         }
 
+    def __get_queue_time_params(self):
+        return {
+            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
+            # "random": int(time.time()),
+            "tourFlag": self.direction
+        }
+
+    def __get_queue_result_data(self, order_id):
+        return {
+            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
+            "orderSequence_no": order_id
+        }
+
     def __get_purchase_confirm_url(self):
         return {
             TicketDirection.ONE_WAY: "https://kyfw.12306.cn/otn/confirmPassenger/initDc",
             TicketDirection.ROUND_TRIP: "https://kyfw.12306.cn/otn/confirmPassenger/initWc"
         }[self.direction]
-
-    @staticmethod
-    def __get_submit_token(text):
-        return re.match(".*var\s+globalRepeatSubmitToken\s*=\s*['\"]([^'\"]*).*", text, flags=re.S).group(1)
-
-    @staticmethod
-    def __get_purchase_key(text):
-        return re.match(".*['\"]key_check_isChange['\"]\s*:\s*['\"]([^'\"]*).*", text, flags=re.S).group(1)
-
-    def __get_purchase_page(self):
-        url = self.__get_purchase_confirm_url()
-        response = webrequest.post(url, cookies=self.__cookies)
-        return response.text
 
     @staticmethod
     def __get_passenger_strs(passenger_dict):
@@ -116,6 +117,19 @@ class TicketPurchaser:
         old_passenger_str = "_".join(map(lambda x: format_func(x, old_format), passenger_dict)) + "_"
         new_passenger_str = "_".join(map(lambda x: format_func(x, new_format), passenger_dict))
         return old_passenger_str, new_passenger_str
+
+    @staticmethod
+    def __get_submit_token(text):
+        return re.match(".*var\s+globalRepeatSubmitToken\s*=\s*['\"]([^'\"]*).*", text, flags=re.S).group(1)
+
+    @staticmethod
+    def __get_purchase_key(text):
+        return re.match(".*['\"]key_check_isChange['\"]\s*:\s*['\"]([^'\"]*).*", text, flags=re.S).group(1)
+
+    def __get_purchase_page(self):
+        url = self.__get_purchase_confirm_url()
+        response = webrequest.post(url, cookies=self.__cookies)
+        return response.text
 
     def __submit_order_request(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest"
@@ -149,6 +163,29 @@ class TicketPurchaser:
     def __confirm_purchase(self, passenger_strs, captcha):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue"
         data = self.__get_confirm_purchase_data(passenger_strs, captcha)
+        json = webrequest.post_json(url, data=data, cookies=self.__cookies)
+        webrequest.check_json_flag(json, "data", "submitStatus", PurchaseFailedError)
+
+    def __get_queue_data(self):
+        url = "https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime"
+        params = self.__get_queue_time_params()
+        json = webrequest.get_json(url, params=params, cookies=self.__cookies)
+        webrequest.check_json_flag(json, "data", "queryOrderWaitTimeStatus", PurchaseFailedError)
+        return json["data"]["waitCount"], json["data"].get("orderId")
+
+    def __wait_for_queue(self, callback):
+        while True:
+            length, order_id = self.__get_queue_data()
+            if length == 0 and order_id is not None:
+                return order_id
+            try:
+                callback(length)
+            except StopPurchaseQueue:
+                return None
+
+    def __get_queue_result(self, order_id):
+        url = "https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue"
+        data = self.__get_queue_result_data(order_id)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         webrequest.check_json_flag(json, "data", "submitStatus", PurchaseFailedError)
 
@@ -202,7 +239,7 @@ class TicketPurchaser:
         self.__submit_token = self.__get_submit_token(purchase_page)
         self.__purchase_key = self.__get_purchase_key(purchase_page)
 
-    def continue_purchase(self, passenger_dict, captcha):
+    def continue_purchase(self, passenger_dict, captcha, queue_callback):
         self.__ensure_order_submitted()
         try:
             self.__ensure_tickets_valid(passenger_dict)
@@ -210,6 +247,12 @@ class TicketPurchaser:
             self.__check_order_info(passenger_strs, captcha)
             self.__get_queue_count(passenger_dict)
             self.__confirm_purchase(passenger_strs, captcha)
+            order_id = self.__wait_for_queue(queue_callback)
+            if order_id is not None:
+                self.__get_queue_result_data(order_id)
+            self.__submit_token = None
+            self.__purchase_key = None
+            return order_id
         except:
             self.__submit_token = None
             self.__purchase_key = None

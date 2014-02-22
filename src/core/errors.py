@@ -27,6 +27,10 @@ class StopCaptchaRetry(Exception):
     pass
 
 
+class StopPurchaseQueue(Exception):
+    pass
+
+
 class UnfinishedTransactionError(Exception):
     pass
 
