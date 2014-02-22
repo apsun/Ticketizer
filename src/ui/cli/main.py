@@ -1,4 +1,21 @@
 # -*- coding: utf-8 -*-
+#
+# This file is part of Ticketizer.
+# Copyright (c) 2014 Andrew Sun <youlosethegame@live.com>
+#
+# Ticketizer is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# Ticketizer is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
+
 import datetime
 import os
 from configparser import RawConfigParser
@@ -107,30 +124,30 @@ def search_tickets(station_list):
     tq = get_ticket_query(station_list)
     tf = TrainFilter()
 
-    tf.ticket_filter.filter_sold_out = True
-    tf.ticket_filter.filter_not_yet_sold = True
+    # tf.ticket_filter.filter_sold_out = True
+    # tf.ticket_filter.filter_not_yet_sold = True
 
-    tf.enabled_types.disable_all()
-    tf.enabled_types[TrainType.T] = True
-    tf.enabled_types[TrainType.D] = True
+    # tf.enabled_types.disable_all()
+    # tf.enabled_types[TrainType.T] = True
+    # tf.enabled_types[TrainType.D] = True
 
-    tf.ticket_filter.enabled_types.disable_all()
-    tf.ticket_filter.enabled_types[TicketType.HARD_SEAT] = True
-    tf.ticket_filter.enabled_types[TicketType.SOFT_SEAT] = True
+    # tf.ticket_filter.enabled_types.disable_all()
+    # tf.ticket_filter.enabled_types[TicketType.HARD_SEAT] = True
+    # tf.ticket_filter.enabled_types[TicketType.SOFT_SEAT] = True
 
-    tf.blacklist.add("T111")
-    tf.whitelist.add("T7785")
+    # tf.blacklist.add("T111")
+    # tf.whitelist.add("T7785")
 
     # tf.price_range.upper = 1000
     # tf.price_range.lower = 500
 
-    tf.duration_range.upper = datetime.timedelta(hours=10)
+    # tf.duration_range.upper = datetime.timedelta(hours=10)
 
-    tf.departure_time_range.lower = common.str_to_time("10:00")
-    tf.departure_time_range.upper = common.str_to_time("18:00")
+    # tf.departure_time_range.lower = common.str_to_time("10:00")
+    # tf.departure_time_range.upper = common.str_to_time("18:00")
 
-    tf.arrival_time_range.lower = common.str_to_time("12:00")
-    tf.arrival_time_range.upper = common.str_to_time("22:00")
+    # tf.arrival_time_range.lower = common.str_to_time("12:00")
+    # tf.arrival_time_range.upper = common.str_to_time("22:00")
 
     ts = TrainSorter()
     ts.sort_methods.append(ts.sort_by_number)

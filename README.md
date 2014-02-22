@@ -1,8 +1,18 @@
-This is Ticketizer, a work-in-progress to let you buy 
-tickets from China's 12306.cn website with using a 
-fraction of the time and effort that would be required 
-to use their actual crappy website.
+What is Ticketizer? Why, it's only the best to happen to
+12306.cn since, well, 12306.cn! To be specific, it's a
+library (written in Python!) that abstracts away most of
+the underlying web API, leaving only an efficient and
+simple API for client code to call.
 
-P.S. Maybe 12306's programmers could learn a thing or two 
-by looking at how many hacks I have to use in my code in 
-order to get everything to work...
+Ticketizer is driven by the philosophy that you shouldn't
+have to jump through hoops to get where you want. Under
+no circumstances should clients have to step through dozens
+of web requests just to query the number of tickets remaining.
+
+There are two major components to Ticketizer: a core
+("business logic") component, which is responsible for
+abstracting away all web requests, and a UI component,
+which takes the raw data from the core component and
+exposes it to the user. The core layer has been designed
+to allow for interchangeable UI layers, which means
+you can use the core layer from both CLI and GUI alike.
