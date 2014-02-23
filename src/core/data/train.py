@@ -55,6 +55,10 @@ class Train:
         # Data that we don't use, but is still required for
         # purchasing tickets.
         self.data = {
+            # Required for getting train path.
+            # Can be, but IS NOT ALWAYS, the same
+            # as the queried train date.
+            "alt_date": raw_data["start_train_date"],
             # Used for buying tickets.
             "location_code": raw_data["location_code"],
             # Used for buying tickets (also holds ticket count data).

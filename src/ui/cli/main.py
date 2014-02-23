@@ -21,6 +21,7 @@ import os
 from configparser import RawConfigParser
 from core import common, logger
 from core.errors import StopPathSearch, StopCaptchaRetry, StopPurchaseQueue, LoginFailedError
+from core.errors import UnfinishedTransactionError, DataExpiredError
 from core.enums import TrainType, TicketType, TicketStatus
 from core.data.station import StationList
 from core.search.search import TicketSearcher, TrainQuery
@@ -202,7 +203,14 @@ def get_alternative_path(station_list, train):
 def purchase_tickets(login_manager, train):
     pd = login_manager.get_purchaser()
     pd.train = train
-    pd.begin_purchase()
+    try:
+        pd.begin_purchase()
+    except UnfinishedTransactionError:
+        print("You have unfinished transactions, either cancel or finish them and try again.")
+        return
+    except DataExpiredError:
+        print("Train data is too old, please re-search and try again.")
+        return
     passenger_list = pd.get_passenger_list()
     selected_passengers = console_passenger_selector(passenger_list)
     passenger_dict = console_ticket_selector(selected_passengers, pd.train)

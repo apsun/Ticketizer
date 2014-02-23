@@ -86,7 +86,10 @@ class PathFinder:
             ("train_no", train.id),
             ("from_station_telecode", train.departure_station.id),
             ("to_station_telecode", train.destination_station.id),
-            ("depart_date", common.date_to_str(train.departure_time.date()))
+            # Apparently you're not supposed to use the actual
+            # train date here, but the date returned in the
+            # train query data. And yes, they can be different.
+            ("depart_date", common.date_to_str(common.str_to_date(train.data["alt_date"], "%Y%m%d")))
         ]
 
     @staticmethod
