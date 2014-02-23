@@ -74,6 +74,13 @@ def main():
         menu_opt = prompt_valid("Select option (login, logout, search, buy, path, exit): ", menu_validator)
         try:
             if menu_opt == "X":
+                if lm is not None:
+                    # noinspection PyBroadException
+                    try:
+                        lm.logout()
+                    except:
+                        # Who cares, we're exiting anyways
+                        pass
                 print("Bye~")
                 return
             if menu_opt == "L":
@@ -84,14 +91,17 @@ def main():
                     lm = None
             elif menu_opt == "S":
                 tl = search_tickets(sl)
-                print_train_info(tl)
+                print_ticket_info(tl)
             elif menu_opt == "P":
                 if tl is None:
                     tl = search_tickets(sl)
                 if len(tl) == 0:
                     print("No trains, try searching for something else!")
                     continue
+                print_ticket_info(tl)
                 train = console_train_selector(tl)
+                if train is None:
+                    continue
                 get_alternative_path(sl, train)
             elif menu_opt == "B":
                 if lm is None:
@@ -102,6 +112,11 @@ def main():
                     print("No trains, try searching for something else!")
                     continue
                 train = console_train_selector(tl)
+                if train is None:
+                    continue
+                if not train.can_buy:
+                    print("Can't buy this train, choose another train!")
+                    continue
                 purchase_tickets(lm, train)
         except (StopCaptchaRetry, StopPathSearch, StopPurchaseQueue):
             pass
@@ -223,12 +238,14 @@ def console_train_selector(train_list):
     print_tickets_remaining(train_list)
 
     def get_train(answer):
+        if answer == "ABORT":
+            return None
         for train in train_list:
             if train.name == answer.upper():
                 return train
         raise ValueError("That's not in the list of trains, silly!")
 
-    return prompt_valid("Enter a train name: ", get_train)
+    return prompt_valid("Enter a train name (type 'ABORT' to cancel): ", get_train)
 
 
 def console_passenger_selector(passenger_list):

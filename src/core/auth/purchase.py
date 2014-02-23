@@ -153,15 +153,15 @@ class TicketPurchaser:
     def __submit_order_request(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/submitOrderRequest"
         data = self.__get_purchase_submit_data()
-        json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        if json["status"] is not True:
-            messages = json["messages"]
-            for message in messages:
-                if message.startswith("您还有未处理的订单"):
-                    raise UnfinishedTransactionError()
-                elif message.startswith("车票信息已过期"):
-                    raise DataExpiredError()
-            raise InvalidRequestError(common.join_list(messages))
+        try:
+            webrequest.post_json(url, data=data, cookies=self.__cookies)
+        except InvalidRequestError as ex:
+            msg = ex.args[0]
+            if msg.startswith("您还有未处理的订单"):
+                raise UnfinishedTransactionError() from ex
+            if msg.startswith("车票信息已过期"):
+                raise DataExpiredError() from ex
+            raise
 
     def __check_order_info(self, passenger_strs, captcha):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
@@ -254,6 +254,8 @@ class TicketPurchaser:
 
         # Note: If continue_purchase() throws an exception,
         # you must call begin_purchase() again!
+        if not self.train.can_buy:
+            raise PurchaseFailedError("No tickets available for purchase")
         logger.debug("Purchasing tickets for train " + self.train.name)
         self.__submit_order_request()
         purchase_page = self.__get_purchase_page()
