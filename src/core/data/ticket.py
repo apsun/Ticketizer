@@ -66,8 +66,17 @@ class Ticket:
         self.__price = value
 
     def __str__(self):
-        return "{0} -> {1} (count: {2})".format(
+        count_info = {
+            TicketStatus.NOT_APPLICABLE: "not applicable",
+            TicketStatus.NOT_YET_SOLD: "not yet sold",
+            TicketStatus.SOLD_OUT: "sold out",
+            TicketStatus.NORMAL: "{0} remaining"
+        }[self.status].format(self.count)
+        return "{0} -> {1} ({2})".format(
             self.train.name,
             TicketType.FULL_NAME_LOOKUP[self.type],
-            TicketStatus.TEXT_LOOKUP.get(self.status, str(self.count))
+            count_info
         )
+
+    def __repr__(self):
+        return str(self)

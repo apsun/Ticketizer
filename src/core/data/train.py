@@ -177,3 +177,6 @@ class Train:
             self.departure_station.name,
             self.destination_station.name
         )
+
+    def __repr__(self):
+        return str(self)

@@ -23,7 +23,7 @@ from core.processing.containers import BitFlags, FlagSet, ValueRange
 class TrainFilter:
     def __init__(self):
         # Filter to ignore certain train types
-        self.enabled_types = BitFlags(TrainType.ALL, TrainType.ALL, TrainType.NONE)
+        self.enabled_types = BitFlags(TrainType.ALL)
         # If any trains are added to this set, they will be returned,
         # regardless of whether they meet other criteria. To ONLY allow trains
         # in this list to appear, simply set enabled_types to TrainType.NONE.
@@ -63,7 +63,7 @@ class TrainFilter:
 class TicketFilter:
     def __init__(self):
         # Type mask to filter ticket types
-        self.enabled_types = BitFlags(TicketType.ALL, TicketType.ALL, TicketType.NONE)
+        self.enabled_types = BitFlags(TicketType.ALL)
         # Price filter. Tickets with prices outside
         # this range will be ignored. (ValueRange)
         self.price_range = ValueRange()

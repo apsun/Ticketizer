@@ -248,9 +248,12 @@ class TicketPurchaser:
         # 3. Solve the captcha and select passengers
         #    -> (this part is for the client to implement)
         # 4. Complete the order
-        #    -> continue_purchase(passenger_dict, captcha)
+        #    -> continue_purchase(passenger_dict, captcha, queue_callback)
         #       -> passenger_dict: maps passengers to tickets
         #       -> captcha: a solved captcha object
+        #       -> queue_callback: a function that is called while waiting 
+        #             in the ticket queue, takes the length of the queue as 
+        #             a parameter and should return when ready to check again
 
         # Note: If continue_purchase() throws an exception,
         # you must call begin_purchase() again!

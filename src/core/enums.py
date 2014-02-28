@@ -81,6 +81,20 @@ class TicketType:
         BUSINESS:         "商务座"
     }
 
+    REVERSE_FULL_NAME_LOOKUP = {
+        "其他":     OTHER,
+        "无座":     NO_SEAT,
+        "硬座":     HARD_SEAT,
+        "软座":     SOFT_SEAT,
+        "硬卧":     HARD_SLEEPER,
+        "软卧":     SOFT_SLEEPER,
+        "高级软卧":  SOFT_SLEEPER_PRO,
+        "二等座":   SECOND_CLASS,
+        "一等座":   FIRST_CLASS,
+        "特等座":   SPECIAL,
+        "商务座":   BUSINESS
+    }
+
     ABBREVIATION_LOOKUP = {
         OTHER:            "qt",
         NO_SEAT:          "wz",
@@ -159,12 +173,6 @@ class TicketStatus:
     NOT_YET_SOLD = 1
     SOLD_OUT = 2
     NORMAL = 3
-
-    TEXT_LOOKUP = {
-        NOT_APPLICABLE: "--",
-        NOT_YET_SOLD:   "*",
-        # SOLD_OUT:       "无"
-    }
 
     REVERSE_TEXT_LOOKUP = {
         "--": NOT_APPLICABLE,

@@ -39,7 +39,7 @@ class TrainQuery:
         self.exact_departure_station = False
         self.exact_destination_station = False
 
-    def __get_query_string(self):
+    def __get_query_params(self):
         return [
             ("leftTicketDTO.train_date", common.date_to_str(self.date)),
             ("leftTicketDTO.from_station", self.departure_station.id),
@@ -49,7 +49,7 @@ class TrainQuery:
 
     def execute(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/query"
-        params = self.__get_query_string()
+        params = self.__get_query_params()
         json_data = webrequest.get_json(url, params=params)["data"]
         logger.debug("Got ticket list from {0} to {1} on {2}".format(
             self.departure_station.name,

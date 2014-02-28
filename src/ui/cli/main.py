@@ -65,6 +65,8 @@ def main():
             return "B"
         if answer == "EXIT":
             return "X"
+        if answer == "AUTO":
+            return "A"
         raise ValueError("Oh dear, that's not an option! :c")
 
     sl = StationList()
@@ -73,6 +75,8 @@ def main():
     while True:
         menu_opt = prompt_valid("Select option (login, logout, search, buy, path, exit): ", menu_validator)
         try:
+            if menu_opt == "A":
+                print("WAT")
             if menu_opt == "X":
                 if lm is not None:
                     # noinspection PyBroadException
@@ -128,12 +132,32 @@ def login():
     password = prompt_default_valid("Enter your password: ", lambda x: x, auto_password)
     captcha = get_and_solve_captcha(login_manager.get_login_captcha)
     try:
-        login_manager.login(username, password, captcha)
-        print("Logged in with username: " + username)
-        return login_manager
+        return login_manager.login(username, password, captcha)
     except LoginFailedError:
         print("Login failed, check your username and password!")
         return None
+
+
+def purchase_tickets(login_manager, train):
+    pd = login_manager.get_purchaser()
+    pd.train = train
+    try:
+        pd.begin_purchase()
+    except UnfinishedTransactionError:
+        print("You have unfinished transactions, either cancel or finish them and try again.")
+        return
+    except DataExpiredError:
+        print("Train data is too old, please re-search and try again.")
+        return
+
+    passenger_list = pd.get_passenger_list()
+    selected_passengers = console_passenger_selector(passenger_list)
+    passenger_dict = console_ticket_selector(selected_passengers, pd.train)
+    captcha = get_and_solve_captcha(pd.get_purchase_captcha)
+    order_id = pd.continue_purchase(passenger_dict, captcha, console_queue_callback)
+    print("Order completed! Order ID: " + order_id)
+    print("Please login to 12306.cn and pay for your ticket(s)!")
+    return order_id
 
 
 def search_tickets(station_list):
@@ -213,25 +237,6 @@ def get_alternative_path(station_list, train):
                 subtrain.departure_station.name,
                 subtrain.destination_station.name))
     return path
-
-
-def purchase_tickets(login_manager, train):
-    pd = login_manager.get_purchaser()
-    pd.train = train
-    try:
-        pd.begin_purchase()
-    except UnfinishedTransactionError:
-        print("You have unfinished transactions, either cancel or finish them and try again.")
-        return
-    except DataExpiredError:
-        print("Train data is too old, please re-search and try again.")
-        return
-    passenger_list = pd.get_passenger_list()
-    selected_passengers = console_passenger_selector(passenger_list)
-    passenger_dict = console_ticket_selector(selected_passengers, pd.train)
-    captcha = get_and_solve_captcha(pd.get_purchase_captcha)
-    order_id = pd.continue_purchase(passenger_dict, captcha, console_queue_callback)
-    print("Order completed! ID: " + order_id)
 
 
 def console_train_selector(train_list):

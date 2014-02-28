@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
+
 class ValueRange:
     def __init__(self, lower=None, upper=None):
         self.lower = lower
@@ -43,51 +44,66 @@ class ValueRange:
 
 
 class BitFlags:
-    def __init__(self, default_flags, all_flags=None, no_flags=None):
+    def __init__(self, default_flags):
         self.__flags = default_flags
-        self.__all = all_flags
-        self.__none = no_flags
 
     def __setitem__(self, flag, enable):
         if enable:
-            self.__flags |= flag
+            self.add(flag)
         else:
-            self.__flags &= ~flag
+            self.remove(flag)
 
     def __getitem__(self, flag):
         return (self.__flags & flag) == flag
 
-    def enable_all(self):
-        if self.__all is None:
-            raise ValueError("No full flag set provided in constructor")
-        self.__flags = self.__all
+    def add(self, item):
+        self.__flags |= item
 
-    def disable_all(self):
-        if self.__none is None:
-            raise ValueError("No empty flag set provided in constructor")
-        self.__flags = self.__none
+    def add_range(self, items):
+        for item in items:
+            self.add(item)
+
+    def remove(self, item):
+        self.__flags &= ~item
+
+    def remove_range(self, items):
+        for item in items:
+            self.remove(item)
+
+    def clear(self):
+        self.__flags = 0
 
 
 class FlagSet:
     def __init__(self):
-        self.__list = {}
+        self.__set = set()
 
     def __setitem__(self, item, value):
-        self.__list[item] = value
+        if value:
+            self.add(item)
+        else:
+            self.remove(item)
 
     def __getitem__(self, item):
-        return self.__list.get(item, False)
+        return item in self.__set
 
     def __iter__(self):
-        for key, value in self.__list.items():
-            if value:
-                yield key
+        for item in self.__set:
+            yield item
 
     def add(self, item):
-        self[item] = True
+        self.__set.add(item)
+
+    def add_range(self, items):
+        for item in items:
+            self.add(item)
 
     def remove(self, item):
-        self[item] = False
+        self.__set.remove(item)
+
+    def remove_range(self, items):
+        for item in items:
+            self.remove(item)
 
     def clear(self):
-        self.__list.clear()
+        self.__set.clear()

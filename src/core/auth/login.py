@@ -61,6 +61,7 @@ class LoginManager:
         username = json["data"]["username"]
         logger.debug("Successfully logged in with username " + username)
         self.__username = username
+        return self
 
     def logout(self):
         webrequest.get("https://kyfw.12306.cn/otn/login/loginOut", cookies=self.__cookies, allow_redirects=False)
@@ -69,6 +70,7 @@ class LoginManager:
             logger.debug("Logged out of user: " + self.__username)
         else:
             logger.warning("Logged out of unknown user")
+        return self
 
     def get_login_captcha(self):
         return Captcha(CaptchaType.LOGIN, self.__cookies)

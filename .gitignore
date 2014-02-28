@@ -2,4 +2,5 @@
 *.pyc
 captcha.jpg
 config.cfg
+config.py
 run_cli.bat

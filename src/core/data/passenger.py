@@ -35,3 +35,6 @@ class Passenger:
             PassengerType.TEXT_LOOKUP[self.type],
             IdentificationType.TEXT_LOOKUP[self.id_type],
             self.id_number)
+
+    def __repr__(self):
+        return str(self)

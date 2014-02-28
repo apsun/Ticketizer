@@ -44,6 +44,9 @@ class Station:
     def __str__(self):
         return "{0} (ID: {1})".format(self.name, self.id)
 
+    def __repr__(self):
+        return str(self)
+
 
 class StationList:
     def __init__(self, use_dict=True):
