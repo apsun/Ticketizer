@@ -17,17 +17,18 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 from datetime import datetime, timedelta
-from core import logger, common, webrequest
+from core import logger, timeconverter, webrequest
 from core.enums import TrainType, TicketType, TicketStatus
 from core.data.ticket import Ticket, TicketList
 
 
 class Train:
-    def __init__(self, raw_data, departure_station, destination_station, pricing, direction, date):
+    def __init__(self, train_data, departure_station, destination_station, pricing, direction, date):
+        query_data = train_data["queryLeftNewDTO"]
         # The user-friendly name of the train (e.g. T546)
-        self.name = raw_data["station_train_code"]
+        self.name = query_data["station_train_code"]
         # The unique internal identifier of the train (e.g. 5l000D220200)
-        self.id = raw_data["train_no"]
+        self.id = query_data["train_no"]
         # The type of the train (from TrainType enum)
         self.type = TrainType.REVERSE_ABBREVIATION_LOOKUP.get(self.name[0], TrainType.OTHER)
         # A station object that represents the departure (from) station
@@ -41,49 +42,49 @@ class Train:
         # The departure time of the train (datetime.datetime)
         # The date must be passed in from the query because 12306
         # has a bug where the incorrect date is returned in the data.
-        self.departure_time = common.str_to_datetime(date, raw_data["start_time"])
+        self.departure_time = timeconverter.str_to_datetime(date, query_data["start_time"])
         # The length of the trip (datetime.timedelta)
-        self.duration = timedelta(minutes=int(raw_data["lishiValue"]))
+        self.duration = timedelta(minutes=int(query_data["lishiValue"]))
         # The arrival time of the train (datetime.datetime)
         self.arrival_time = self.departure_time + self.duration
         # The 1-based index of the departure station in the train's overall station list
-        self.departure_index = raw_data["from_station_no"]
+        self.departure_index = query_data["from_station_no"]
         # The 1-based index of the arrival station in the train's overall station list
-        self.destination_index = raw_data["to_station_no"]
+        self.destination_index = query_data["to_station_no"]
         # Whether we can buy any tickets for this train
-        self.can_buy = common.is_true(raw_data["canWebBuy"])
+        self.can_buy = query_data.get_bool("canWebBuy")
         # Data that we don't use, but is still required for
         # purchasing tickets.
         self.data = {
             # Required for getting train path.
             # Can be, but IS NOT ALWAYS, the same
             # as the queried train date.
-            "alt_date": raw_data["start_train_date"],
+            "alt_date": query_data["start_train_date"],
             # Used for buying tickets.
-            "location_code": raw_data["location_code"],
+            "location_code": query_data["location_code"],
             # Used for buying tickets (also holds ticket count data).
-            "ticket_count": raw_data["yp_info"],
+            "ticket_count": query_data["yp_info"],
             # Used for querying ticket prices.
-            "seat_types": raw_data["seat_types"],
+            "seat_types": query_data["seat_types"],
             # Used for purchasing tickets. Note that this value
             # expires 5 minutes after creation, so the client must
             # re-query the train information after creating this object
             # if they want to purchase any tickets.
-            "secret_key": raw_data["secretStr"]
+            "secret_key": train_data["secretStr"]
         }
         # A dictionary mapping each ticket type to a Ticket object.
         # Even if the train does not have that ticket type,
         # an object should still be created for it.
-        self.tickets = TicketList(self.__get_ticket_dict(raw_data))
+        self.tickets = TicketList(self.__get_ticket_dict(query_data))
         # Set the ticket selling time
-        self.begin_selling_time = self.__get_begin_selling_time(self.tickets, raw_data)
+        self.begin_selling_time = self.__get_begin_selling_time(self.tickets, query_data)
         # A flag to see whether we have already fetched ticket prices.
         self.ticket_prices_fetched = False
 
     @staticmethod
-    def __parse_ticket_count(raw_data):
+    def __parse_ticket_count(query_data):
         # WTF, 12306! Ever heard of CSV? Arrays? ANYTHING but this?!
-        ticket_count_str = raw_data["yp_info"]
+        ticket_count_str = query_data["yp_info"]
         # Each entry is 10 characters long (or at least, it better be...)
         assert len(ticket_count_str) % 10 == 0
         ticket_counts = [ticket_count_str[i:i+10] for i in range(0, len(ticket_count_str), 10)]
@@ -102,17 +103,17 @@ class Train:
             counts[type_value] = count_int
         return counts
 
-    def __get_ticket_dict(self, raw_data):
-        count_data = self.__parse_ticket_count(raw_data)
+    def __get_ticket_dict(self, query_data):
+        count_data = self.__parse_ticket_count(query_data)
         tickets = {}
         for key, value in TicketType.REVERSE_ABBREVIATION_LOOKUP.items():
-            ticket_count_text = raw_data[key + "_num"]
+            ticket_count_text = query_data[key + "_num"]
             ticket_count_num = count_data.get(value, 0)
             tickets[value] = Ticket(self, value, ticket_count_text, ticket_count_num)
         return tickets
 
     @staticmethod
-    def __get_begin_selling_time(tickets, data_dict):
+    def __get_begin_selling_time(tickets, query_data):
         # For some reason, different ticket categories can
         # begin selling at different times. Thus, even if we
         # can buy some tickets, some might still be unavailable.
@@ -130,11 +131,11 @@ class Train:
         if not not_yet_sold:
             return None
 
-        begin_date = data_dict["control_train_day"]
+        begin_date = query_data["control_train_day"]
         # I sure hope this website doesn't last until 2030-03-03...
         if begin_date == "20300303":
             begin_date = datetime.now().date()
-        return common.str_to_datetime(begin_date, data_dict["sale_time"], "%Y%m%d", "%H%M")
+        return timeconverter.str_to_datetime(begin_date, query_data["sale_time"], "%Y%m%d", "%H%M")
 
     def __get_price_query_params(self):
         return [
@@ -142,7 +143,7 @@ class Train:
             ("from_station_no", self.departure_index),
             ("to_station_no", self.destination_index),
             ("seat_types", self.data["seat_types"]),
-            ("train_date", common.date_to_str(self.departure_time))
+            ("train_date", timeconverter.date_to_str(self.departure_time))
         ]
 
     def refresh_ticket_prices(self):

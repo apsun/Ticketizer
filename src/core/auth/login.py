@@ -17,7 +17,7 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 from core import logger, webrequest
-from core.errors import LoginFailedError, InvalidOperationError
+from core.errors import InvalidOperationError, InvalidUsernameError, InvalidPasswordError
 from core.auth.cookies import SessionCookies
 from core.auth.captcha import CaptchaType, Captcha
 from core.auth.purchase import TicketPurchaser
@@ -46,7 +46,8 @@ class LoginManager:
         if self.__username is None:
             return False
         url = "https://kyfw.12306.cn/otn/login/checkUser"
-        return webrequest.post_json(url, cookies=self.__cookies)["data"]["flag"] is True
+        json = webrequest.post_json(url, cookies=self.__cookies)
+        return json["data"].get_bool("flag")
 
     def get_purchaser(self):
         if not self.__is_logged_in():
@@ -57,17 +58,22 @@ class LoginManager:
         data = self.__get_login_params(email, password, captcha.answer)
         url = "https://kyfw.12306.cn/otn/login/loginUserAsyn"
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        webrequest.check_json_flag(json, "data", "status", exception=LoginFailedError)
+        if not json["data"].get_bool("status"):
+            message = json["data"]["loginFail"]
+            if message == "登录名不存在!":
+                raise InvalidUsernameError()
+            if message.startswith("密码输入错误"):
+                raise InvalidPasswordError()
+            json.raise_error()
         username = json["data"]["username"]
-        logger.debug("Successfully logged in with username " + username)
+        logger.debug("Successfully logged in to user " + username)
         self.__username = username
         return self
 
     def logout(self):
         webrequest.get("https://kyfw.12306.cn/otn/login/loginOut", cookies=self.__cookies, allow_redirects=False)
         if self.__username is not None:
-            # noinspection PyTypeChecker
-            logger.debug("Logged out of user: " + self.__username)
+            logger.debug("Logged out of user: " + str(self.__username))
         else:
             logger.warning("Logged out of unknown user")
         return self

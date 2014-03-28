@@ -16,42 +16,68 @@
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
-from core.processing.containers import FlagSet
+
+from core.processing.containers import StringPrioritizer
 
 
 class TrainSorter:
     def __init__(self):
-        self.favorites = FlagSet()
+        self.favorites = None
         self.sort_methods = []
-        self.reverse = False
 
     def sort(self, train_list):
         for sorter in self.sort_methods:
-            if isinstance(sorter, tuple):
-                sort_func, reverse = sorter
-                sort_func(train_list, reverse)
-            else:
-                sorter(train_list)
+            if isinstance(sorter, str):
+                sorter = self.__sort_method_dispatch(sorter)
+            sorter(train_list)
+        self.__sort_by_favorites(train_list)
 
-    def sort_by_number(self, train_list, reverse):
-        # Note: does NOT take into account the train type!
-        # To sort by the type as well, call sort_by_type after this!
+    @classmethod
+    def __sort_method_dispatch(cls, method_name):
+        if method_name.startswith("!"):
+            method_name = method_name[1:]
+            reverse = True
+        else:
+            reverse = False
+        return lambda train_list: {
+            "name": cls.__sort_by_name,
+            "departure_time": cls.__sort_by_departure_time,
+            "arrival_time": cls.__sort_by_arrival_time,
+            "duration": cls.__sort_by_duration,
+            "price": cls.__sort_by_price
+        }[method_name](train_list, reverse)
+
+    def __sort_by_favorites(self, train_list):
+        # Sorts the train list using the specified key,
+        # keeping "favorite" trains in the front.
+        favorites = self.favorites
+        if favorites is None:
+            return
+        if not isinstance(favorites, StringPrioritizer):
+            # Succeed or die trying!
+            favorites = StringPrioritizer(favorites)
+        train_list.sort(key=lambda x: favorites[x.name])
+
+    @staticmethod
+    def __sort_by_name(train_list, reverse):
         type_stripper = lambda x: x.name[1:] if str.isalpha(x.name[0]) else x.name
-        self.__sort_by_key(train_list, lambda x: int(type_stripper(x)), reverse)
+        train_list.sort(key=lambda x: int(type_stripper(x)), reverse=reverse)
+        train_list.sort(key=lambda x: x.type, reverse=reverse)
 
-    def sort_by_type(self, train_list, reverse):
-        self.__sort_by_key(train_list, lambda x: x.type, reverse)
+    @staticmethod
+    def __sort_by_departure_time(train_list, reverse):
+        train_list.sort(key=lambda x: x.departure_time, reverse=reverse)
 
-    def sort_by_departure_time(self, train_list, reverse):
-        self.__sort_by_key(train_list, lambda x: x.departure_time, reverse)
+    @staticmethod
+    def __sort_by_arrival_time(train_list, reverse):
+        train_list.sort(key=lambda x: x.arrival_time, reverse=reverse)
 
-    def sort_by_arrival_time(self, train_list, reverse):
-        self.__sort_by_key(train_list, lambda x: x.arrival_time, reverse)
+    @staticmethod
+    def __sort_by_duration(train_list, reverse):
+        train_list.sort(key=lambda x: x.duration, reverse=reverse)
 
-    def sort_by_duration(self, train_list, reverse):
-        self.__sort_by_key(train_list, lambda x: x.duration, reverse)
-
-    def sort_by_price(self, train_list, reverse):
+    @staticmethod
+    def __sort_by_price(train_list, reverse):
         # No idea why anyone would want to sort by maximum price, but whatever...
         # This method intelligently uses the min/max price of the train's tickets.
         # That means that doing an ascending sort and reversing is NOT the same as
@@ -62,11 +88,4 @@ class TrainSorter:
         else:
             ticket_price_func = lambda x: float("inf") if x.price is None else x.price
             train_price_func = lambda x: min(map(ticket_price_func, x.tickets))
-        self.__sort_by_key(train_list, train_price_func, reverse)
-
-    def __sort_by_key(self, train_list, compare_key, reverse):
-        # Sorts the train list using the specified key,
-        # keeping "favorite" trains in the front.
-        # The sorting algorithm used must be stable for this to work!
-        train_list.sort(key=compare_key, reverse=reverse)
-        train_list.sort(key=lambda x: 0 if self.favorites[x.name] else 1)
+        train_list.sort(key=train_price_func, reverse=reverse)

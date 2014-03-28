@@ -18,7 +18,7 @@
 
 from datetime import datetime, timedelta
 from collections import OrderedDict
-from core import common, logger, webrequest
+from core import timeconverter, logger, webrequest
 from core.errors import StopPathSearch
 from core.search.search import TrainQuery, TicketPricing, TicketDirection
 from core.processing.containers import ValueRange, FlagSet
@@ -89,7 +89,7 @@ class PathFinder:
             # Apparently you're not supposed to use the actual
             # train date here, not the date returned in the
             # train query data. And yes, they can be different.
-            ("depart_date", common.date_to_str(common.str_to_date(train.data["alt_date"], "%Y%m%d")))
+            ("depart_date", timeconverter.date_to_str(timeconverter.str_to_date(train.data["alt_date"], "%Y%m%d")))
         ]
 
     @staticmethod
@@ -105,7 +105,8 @@ class PathFinder:
         # Gets stations in (train.departure, train.destination]
         url = "https://kyfw.12306.cn/otn/czxx/queryByTrainNo"
         params = self.__get_train_data_query_params(train)
-        json_station_list = webrequest.get_json(url, params=params)["data"]["data"]
+        json = webrequest.get_json(url, params=params)
+        json_station_list = json["data"]["data"]
         logger.debug("Fetched station data for train " + train.name)
         istart = None
         iend = len(json_station_list)

@@ -17,10 +17,6 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 
-class InvalidRequestError(Exception):
-    pass
-
-
 class InvalidOperationError(Exception):
     pass
 
@@ -29,11 +25,35 @@ class LoginFailedError(Exception):
     pass
 
 
+class InvalidUsernameError(LoginFailedError):
+    pass
+
+
+class InvalidPasswordError(LoginFailedError):
+    pass
+
+
 class PurchaseFailedError(Exception):
     pass
 
 
+class RequestError(Exception):
+    pass
+
+
 class CaptchaUnsolvedError(Exception):
+    pass
+
+
+class UnfinishedTransactionError(Exception):
+    pass
+
+
+class DataExpiredError(Exception):
+    pass
+
+
+class InvalidTicketDateError(Exception):
     pass
 
 
@@ -46,12 +66,4 @@ class StopCaptchaRetry(Exception):
 
 
 class StopPurchaseQueue(Exception):
-    pass
-
-
-class UnfinishedTransactionError(Exception):
-    pass
-
-
-class DataExpiredError(Exception):
     pass

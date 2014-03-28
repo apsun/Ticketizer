@@ -17,10 +17,9 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 import datetime
-import os
-from configparser import RawConfigParser
-from core import common, logger
-from core.errors import StopPathSearch, StopCaptchaRetry, StopPurchaseQueue, LoginFailedError
+from core import timeconverter
+from core.errors import StopPathSearch, StopCaptchaRetry, StopPurchaseQueue
+from core.errors import LoginFailedError, InvalidUsernameError, InvalidPasswordError
 from core.errors import UnfinishedTransactionError, DataExpiredError
 from core.enums import TrainType, TicketType, TicketStatus
 from core.data.station import StationList
@@ -29,28 +28,24 @@ from core.search.pathing import PathFinder
 from core.processing.filter import TrainFilter
 from core.processing.sort import TrainSorter
 from core.auth.login import LoginManager
+from ui.cli import captcha
 
-config = RawConfigParser()
-config.read(os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.cfg"))
 
-always_auto = config.getboolean("Config", "always_auto")
-logging_enabled = config.getboolean("Config", "logging_enabled")
+always_auto = None
+logging_enabled = True
 
-auto_username = config.get("Config", "username")
-auto_password = config.get("Config", "password")
+auto_username = None
+auto_password = None
 
-auto_from_station = config.get("Config", "from_station")
-auto_to_station = config.get("Config", "to_station")
-auto_train_date = config.get("Config", "train_date")
+auto_from_station = "shn"
+auto_to_station = "bjb"
+auto_train_date = "2014-04-12"
 
-auto_min_xfer_time = config.get("Config", "min_xfer_time")
-auto_max_xfer_time = config.get("Config", "max_xfer_time")
+auto_min_xfer_time = None
+auto_max_xfer_time = None
 
 
 def main():
-    logger.set_type_enabled(logger.LogType.NETWORK, logging_enabled)
-    logger.set_type_enabled(logger.LogType.DEBUG, logging_enabled)
-
     def menu_validator(answer):
         answer = answer.upper()
         if answer == "LOGIN":
@@ -95,7 +90,7 @@ def main():
                     lm = None
             elif menu_opt == "S":
                 tl = search_tickets(sl)
-                print_ticket_info(tl)
+                print_tickets_remaining(tl)
             elif menu_opt == "P":
                 if tl is None:
                     tl = search_tickets(sl)
@@ -130,11 +125,17 @@ def login():
     login_manager = LoginManager()
     username = prompt_default_valid("Enter your username: ", lambda x: x, auto_username)
     password = prompt_default_valid("Enter your password: ", lambda x: x, auto_password)
-    captcha = get_and_solve_captcha(login_manager.get_login_captcha)
+    captcha_ans = captcha.solve_captcha(login_manager.get_login_captcha, captcha.ConsoleCaptchaSolver)
     try:
-        return login_manager.login(username, password, captcha)
+        return login_manager.login(username, password, captcha_ans)
+    except InvalidUsernameError:
+        print("Whoops, this user does not exist! Did you type your username correctly?")
+        return None
+    except InvalidPasswordError:
+        print("Incorrect password, silly!")
+        return None
     except LoginFailedError:
-        print("Login failed, check your username and password!")
+        print("Login failed, wtf!")
         return None
 
 
@@ -153,8 +154,8 @@ def purchase_tickets(login_manager, train):
     passenger_list = pd.get_passenger_list()
     selected_passengers = console_passenger_selector(passenger_list)
     passenger_dict = console_ticket_selector(selected_passengers, pd.train)
-    captcha = get_and_solve_captcha(pd.get_purchase_captcha)
-    order_id = pd.continue_purchase(passenger_dict, captcha, console_queue_callback)
+    captcha_ans = captcha.solve_captcha(pd.get_purchase_captcha, captcha.ConsoleCaptchaSolver)
+    order_id = pd.continue_purchase(passenger_dict, captcha_ans, console_queue_callback)
     print("Order completed! Order ID: " + order_id)
     print("Please login to 12306.cn and pay for your ticket(s)!")
     return order_id
@@ -164,34 +165,33 @@ def search_tickets(station_list):
     tq = get_ticket_query(station_list)
     tf = TrainFilter()
 
-    # tf.ticket_filter.filter_sold_out = True
-    # tf.ticket_filter.filter_not_yet_sold = True
+    tf.ticket_filter.filter_sold_out = True
+    tf.ticket_filter.filter_not_yet_sold = True
 
-    # tf.enabled_types.disable_all()
-    # tf.enabled_types[TrainType.T] = True
-    # tf.enabled_types[TrainType.D] = True
+    tf.enabled_types.disable_all()
+    tf.enabled_types[TrainType.T] = True
+    tf.enabled_types[TrainType.D] = True
 
-    # tf.ticket_filter.enabled_types.disable_all()
-    # tf.ticket_filter.enabled_types[TicketType.HARD_SEAT] = True
-    # tf.ticket_filter.enabled_types[TicketType.SOFT_SEAT] = True
+    tf.ticket_filter.enabled_types.disable_all()
+    tf.ticket_filter.enabled_types[TicketType.HARD_SEAT] = True
+    tf.ticket_filter.enabled_types[TicketType.SOFT_SEAT] = True
 
-    # tf.blacklist.add("T111")
-    # tf.whitelist.add("T7785")
+    tf.blacklist.add("T111")
+    tf.whitelist.add("T7785")
 
-    # tf.price_range.upper = 1000
-    # tf.price_range.lower = 500
+    tf.ticket_filter.price_range.upper = 1000
+    tf.ticket_filter.price_range.lower = 500
 
-    # tf.duration_range.upper = datetime.timedelta(hours=10)
+    tf.duration_range.upper = datetime.timedelta(hours=10)
 
-    # tf.departure_time_range.lower = common.str_to_time("10:00")
-    # tf.departure_time_range.upper = common.str_to_time("18:00")
+    tf.departure_time_range.lower = timeconverter.str_to_time("10:00")
+    tf.departure_time_range.upper = timeconverter.str_to_time("18:00")
 
-    # tf.arrival_time_range.lower = common.str_to_time("12:00")
-    # tf.arrival_time_range.upper = common.str_to_time("22:00")
+    tf.arrival_time_range.lower = timeconverter.str_to_time("12:00")
+    tf.arrival_time_range.upper = timeconverter.str_to_time("22:00")
 
     ts = TrainSorter()
-    ts.sort_methods.append(ts.sort_by_number)
-    ts.sort_methods.append(ts.sort_by_type)
+    ts.sort_methods.append("name")
     x = TicketSearcher()
     x.filter = tf
     x.query = tq
@@ -203,7 +203,7 @@ def get_ticket_query(station_list):
     tq = TrainQuery(station_list)
 
     def get_date(answer):
-        return common.str_to_date(answer)
+        return timeconverter.str_to_date(answer)
 
     def get_station(answer):
         return get_station_from_text(station_list, answer)
@@ -232,7 +232,7 @@ def get_alternative_path(station_list, train):
         print("Got path from {0} to {1}:".format(train.departure_station.name, train.destination_station.name))
         for subtrain in path:
             print("[{0}] {1}: {2} -> {3}".format(
-                common.datetime_to_str(subtrain.departure_time),
+                timeconverter.datetime_to_str(subtrain.departure_time),
                 subtrain.name,
                 subtrain.departure_station.name,
                 subtrain.destination_station.name))
@@ -288,22 +288,6 @@ def console_queue_callback(queue_length):
         raise StopPurchaseQueue()
 
 
-def console_captcha_solver(image_data):
-    # noinspection PyUnresolvedReferences
-    captcha_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "captcha.jpg")
-    with open(captcha_path, "wb") as f:
-        f.write(image_data)
-    answer = input("Enter captcha answer: ")
-    try:
-        if answer == "CHANGE":
-            answer = None
-        elif answer == "ABORT":
-            raise StopCaptchaRetry()
-    finally:
-        os.remove(captcha_path)
-    return answer
-
-
 def console_path_selector(train_list):
     def get_train(answer):
         if answer == "UNDO":
@@ -336,10 +320,10 @@ def print_tickets_remaining(train_list):
                        "First class", "Second class", "Sleeper+", "Soft sleeper",
                        "Hard sleeper", "Soft seat", "Hard seat", "No seat", "Other"),
                        lambda i, x: (x.name,
-                                     common.date_to_str(x.departure_time, "%m/%d"),
-                                     common.time_to_str(x.departure_time),
-                                     common.time_to_str(x.arrival_time),
-                                     common.timedelta_to_str(x.duration),
+                                     timeconverter.date_to_str(x.departure_time, "%m/%d"),
+                                     timeconverter.time_to_str(x.departure_time),
+                                     timeconverter.time_to_str(x.arrival_time),
+                                     timeconverter.timedelta_to_str(x.duration),
                                      get_ticket_count(x, TicketType.BUSINESS),
                                      get_ticket_count(x, TicketType.SPECIAL),
                                      get_ticket_count(x, TicketType.FIRST_CLASS),
@@ -359,10 +343,10 @@ def print_ticket_prices(train_list):
                        "First class", "Second class", "Sleeper+", "Soft sleeper",
                        "Hard sleeper", "Soft seat", "Hard seat", "No seat", "Other"),
                        lambda i, x: (x.name,
-                                     common.date_to_str(x.departure_time, "%m/%d"),
-                                     common.time_to_str(x.departure_time),
-                                     common.time_to_str(x.arrival_time),
-                                     common.timedelta_to_str(x.duration),
+                                     timeconverter.date_to_str(x.departure_time, "%m/%d"),
+                                     timeconverter.time_to_str(x.departure_time),
+                                     timeconverter.time_to_str(x.arrival_time),
+                                     timeconverter.timedelta_to_str(x.duration),
                                      get_ticket_price(x, TicketType.BUSINESS),
                                      get_ticket_price(x, TicketType.SPECIAL),
                                      get_ticket_price(x, TicketType.FIRST_CLASS),
@@ -381,12 +365,12 @@ def print_train_info(train_list):
                       ("Name", "Date", "Departure station", "Destination station",
                        "Departure time", "Arrival time", "Duration"),
                        lambda i, x: (x.name,
-                                     common.date_to_str(x.departure_time, "%m/%d"),
+                                     timeconverter.date_to_str(x.departure_time, "%m/%d"),
                                      x.departure_station.id + " (" + x.departure_station.pinyin + ")",
                                      x.destination_station.id + " (" + x.destination_station.pinyin + ")",
-                                     common.time_to_str(x.departure_time),
-                                     common.time_to_str(x.arrival_time),
-                                     common.timedelta_to_str(x.duration)))
+                                     timeconverter.time_to_str(x.departure_time),
+                                     timeconverter.time_to_str(x.arrival_time),
+                                     timeconverter.timedelta_to_str(x.duration)))
 
 
 def get_ticket_count(train, ticket_type):
@@ -409,7 +393,8 @@ def get_station_from_text(station_list, text):
     def select_station(abbrev_station_list):
         def validator(answer):
             return abbrev_station_list[int(answer)]
-
+        if len(abbrev_station_list) == 1:
+            return abbrev_station_list[0]
         for i in range(len(abbrev_station_list)):
             print("{0}. {1}".format(i, abbrev_station_list[i].name))
         return prompt_valid("Select a station #: ", validator)
@@ -444,21 +429,6 @@ def str_to_timedelta(timedelta_str, start_with_hours=True):
             # Assume minutes and seconds
             return datetime.timedelta(minutes=int(split[0]), seconds=int(split[1]))
     raise ValueError("Incorrect timedelta format")
-
-
-def get_and_solve_captcha(getter):
-    while True:
-        captcha = getter()
-        while True:
-            answer = console_captcha_solver(captcha.image_data)
-            if answer is not None:
-                success = captcha.check_answer(answer)
-                if success:
-                    return captcha
-                else:
-                    print("Incorrect answer, try again!")
-            else:
-                break
 
 
 def pretty_print_table(items, header, mapper, padding=2):

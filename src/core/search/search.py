@@ -16,9 +16,10 @@
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
-from core import logger, common, webrequest
+from core import logger, timeconverter, webrequest
 from core.enums import TicketPricing, TicketDirection
 from core.data.train import Train
+from core.errors import RequestError, InvalidTicketDateError
 
 
 class TrainQuery:
@@ -41,7 +42,7 @@ class TrainQuery:
 
     def __get_query_params(self):
         return [
-            ("leftTicketDTO.train_date", common.date_to_str(self.date)),
+            ("leftTicketDTO.train_date", timeconverter.date_to_str(self.date)),
             ("leftTicketDTO.from_station", self.departure_station.id),
             ("leftTicketDTO.to_station", self.destination_station.id),
             ("purpose_codes", TicketPricing.SEARCH_LOOKUP[self.pricing])
@@ -50,21 +51,27 @@ class TrainQuery:
     def execute(self):
         url = "https://kyfw.12306.cn/otn/leftTicket/query"
         params = self.__get_query_params()
-        json_data = webrequest.get_json(url, params=params)["data"]
+        json = webrequest.get_json(url, params=params)
+        try:
+            json_data = json["data"]
+        except RequestError as ex:
+            if ex.args[0] == "选择的查询日期不在预售日期范围内":
+                raise InvalidTicketDateError() from ex
+            raise
         logger.debug("Got ticket list from {0} to {1} on {2}".format(
             self.departure_station.name,
             self.destination_station.name,
-            common.date_to_str(self.date)))
+            timeconverter.date_to_str(self.date)))
         train_list = []
         for train_data in json_data:
-            raw_data = common.flatten_dict(train_data)
-            departure_station = self.__station_list.get_by_id(raw_data["from_station_telecode"])
-            destination_station = self.__station_list.get_by_id(raw_data["to_station_telecode"])
+            query_data = train_data["queryLeftNewDTO"]
+            departure_station = self.__station_list.get_by_id(query_data["from_station_telecode"])
+            destination_station = self.__station_list.get_by_id(query_data["to_station_telecode"])
             if self.exact_departure_station and departure_station != self.departure_station:
                 continue
             if self.exact_destination_station and destination_station != self.destination_station:
                 continue
-            train = Train(raw_data, departure_station, destination_station,
+            train = Train(train_data, departure_station, destination_station,
                           self.pricing, self.direction, self.date)
             train_list.append(train)
         return train_list

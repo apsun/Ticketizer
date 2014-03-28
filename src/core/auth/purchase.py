@@ -17,13 +17,14 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 #
 # TODO: Return variables required to auto-open the purchase site
+# TODO: Implement purchasing of round-trip tickets
 
 import urllib.parse
 import re
-from core import common, webrequest, logger
+from core import timeconverter, webrequest, logger
 from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
 from core.errors import UnfinishedTransactionError, DataExpiredError, StopPurchaseQueue
-from core.errors import PurchaseFailedError, InvalidRequestError, InvalidOperationError
+from core.errors import PurchaseFailedError, RequestError, InvalidOperationError
 from core.auth.captcha import Captcha, CaptchaType
 from core.data.passenger import Passenger
 
@@ -49,7 +50,7 @@ class TicketPurchaser:
 
     def __get_purchase_submit_data(self):
         return {
-            "back_train_date": common.date_to_str(self.train.departure_time.date()),  # TODO: Implement
+            "back_train_date": timeconverter.date_to_str(self.train.departure_time.date()),  # TODO: Implement
             "purpose_codes": TicketPricing.PURCHASE_LOOKUP[self.pricing],
             "query_from_station_name": self.train.departure_station.name,
             "query_to_station_name": self.train.destination_station.name,
@@ -57,7 +58,7 @@ class TicketPurchaser:
             # double-escaped when we send the request.
             "secretStr": urllib.parse.unquote(self.train.data["secret_key"]),
             "tour_flag": self.direction,
-            "train_date": common.date_to_str(self.train.departure_time.date())
+            "train_date": timeconverter.date_to_str(self.train.departure_time.date())
         }
 
     def __get_check_order_data(self, passenger_strs, captcha):
@@ -155,7 +156,7 @@ class TicketPurchaser:
         data = self.__get_purchase_submit_data()
         try:
             webrequest.post_json(url, data=data, cookies=self.__cookies)
-        except InvalidRequestError as ex:
+        except RequestError as ex:
             msg = ex.args[0]
             if msg.startswith("您还有未处理的订单"):
                 raise UnfinishedTransactionError() from ex
@@ -167,13 +168,14 @@ class TicketPurchaser:
         url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
         data = self.__get_check_order_data(passenger_strs, captcha)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        webrequest.check_json_flag(json, "data", "submitStatus", exception=PurchaseFailedError)
+        if not json["data"].get_bool("submitStatus"):
+            raise PurchaseFailedError("Purchase failed @ check_order_info")
 
     def __get_queue_count(self, passenger_dict):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount"
         data = self.__get_queue_count_data(passenger_dict)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        if common.is_true(json["data"]["op_2"]):
+        if json["data"].get_bool("op_2"):
             raise PurchaseFailedError("Too many people in queue")
         queue_length = int(json["data"]["countT"])
         if queue_length > 0:
@@ -183,13 +185,15 @@ class TicketPurchaser:
         url = "https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue"
         data = self.__get_confirm_purchase_data(passenger_strs, captcha)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        webrequest.check_json_flag(json, "data", "submitStatus", exception=PurchaseFailedError)
+        if not json["data"].get_bool("submitStatus"):
+            raise PurchaseFailedError("Purchase failed @ confirm_purchase")
 
     def __get_queue_data(self):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime"
         params = self.__get_queue_time_params()
         json = webrequest.get_json(url, params=params, cookies=self.__cookies)
-        webrequest.check_json_flag(json, "data", "queryOrderWaitTimeStatus", exception=PurchaseFailedError)
+        if not json["data"].get_bool("queryOrderWaitTimeStatus"):
+            raise PurchaseFailedError("Purchase failed @ get_queue_data")
         return json["data"]["waitCount"], json["data"].get("orderId")
 
     def __wait_for_queue(self, callback):
@@ -206,7 +210,8 @@ class TicketPurchaser:
         url = "https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue"
         data = self.__get_queue_result_data(order_id)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        webrequest.check_json_flag(json, "data", "submitStatus", exception=PurchaseFailedError)
+        if not json["data"].get_bool("submitStatus"):
+            raise PurchaseFailedError("Purchase failed @ get_queue_result")
 
     def __ensure_order_submitted(self):
         if self.__submit_token is None:
@@ -276,10 +281,7 @@ class TicketPurchaser:
             order_id = self.__wait_for_queue(queue_callback)
             if order_id is not None:
                 self.__get_queue_result(order_id)
-            self.__submit_token = None
-            self.__purchase_key = None
             return order_id
-        except:
+        finally:
             self.__submit_token = None
             self.__purchase_key = None
-            raise

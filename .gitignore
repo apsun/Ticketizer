@@ -1,6 +1,4 @@
 .idea/
-*.pyc
-captcha.jpg
-config.cfg
+/src/*.*
 config.py
-run_cli.bat
+*.pyc

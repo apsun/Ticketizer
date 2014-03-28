@@ -18,34 +18,12 @@
 
 import requests
 import urllib.parse
-from core import common, logger
+from core import logger, jsonwrapper
 from core.auth.cookies import SessionCookies
-from core.errors import InvalidRequestError
 
 
 def request(method, url, **kwargs):
-    def log_request():
-        def dict_to_str(obj):
-            if isinstance(obj, dict):
-                iterable = obj.items()
-            else:
-                iterable = obj
-            return "".join(map(lambda x: "\n   -> {0}: {1}".format(*x), iterable))
-
-        log_values = ["[{0}] {1}".format(method.upper(), url)]
-        for arg, value in kwargs.items():
-            if value is None:
-                continue
-            try:
-                if len(value) == 0:
-                    continue
-                value = dict_to_str(value)
-            except TypeError:
-                pass
-            log_values.append(" -> {0}: {1}".format(arg, value))
-        logger.network("\n".join(log_values))
-
-    log_request()
+    log_network(method, url, **kwargs)
     params = kwargs.get("params")
     if isinstance(params, list):
         url += "?" + urllib.parse.urlencode(params)
@@ -58,6 +36,23 @@ def request(method, url, **kwargs):
     return response
 
 
+def log_network(method, url, **kwargs):
+    log_values = ["[{0}] {1}".format(method.upper(), url)]
+    for arg, value in kwargs.items():
+        if value is None:
+            continue
+        try:
+            if len(value) == 0:
+                continue
+            if isinstance(value, dict):
+                value = value.items()
+            value = "".join(map(lambda x: "\n   -> {0}: {1}".format(*x), value))
+        except TypeError:
+            pass
+        log_values.append(" -> {0}: {1}".format(arg, value))
+    logger.network("\n".join(log_values))
+
+
 def get(url, **kwargs):
     return request("get", url, **kwargs)
 
@@ -67,30 +62,8 @@ def post(url, **kwargs):
 
 
 def get_json(url, **kwargs):
-    return read_json(get(url, **kwargs))
+    return jsonwrapper.read(get(url, **kwargs))
 
 
 def post_json(url, **kwargs):
-    return read_json(post(url, **kwargs))
-
-
-def read_json(response):
-    if response.text == "-1":  # For 12306, "-1" means invalid query
-        raise InvalidRequestError("Invalid query parameters, has the 12306 API changed?")
-    json = response.json()
-    if json.get("status") is not True:
-        raise InvalidRequestError(common.join_list(json.get("messages")))
-    return json
-
-
-def check_json_flag(json, *path, custom_bool=True, exception=None):
-    value = common.get_dict_value_coalesce(json, *path)
-    if custom_bool:
-        status = common.is_true(value)
-    else:
-        status = value is True
-    if not status:
-        if exception is None:
-            exception = InvalidRequestError
-        raise exception(common.join_list(json.get("messages")))
-    return json
+    return jsonwrapper.read(post(url, **kwargs))

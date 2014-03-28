@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
-from core import logger, common, webrequest
+from core import logger, webrequest
 
 
 class Station:
@@ -71,8 +71,7 @@ class StationList:
         js_split = response.text.split("'")
         assert len(js_split) == 3
         station_split = js_split[1].split("@")
-        station_data_list = common.slice_list(station_split, start=1)
-        station_list = [Station(item.split("|")) for item in station_data_list]
+        station_list = [Station(item.split("|")) for item in station_split[1:]]
         logger.debug("Fetched station list ({0} stations)".format(len(station_list)))
         return station_list
 

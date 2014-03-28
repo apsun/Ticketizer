@@ -17,7 +17,7 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 from requests.exceptions import HTTPError
-from core import logger, common, webrequest
+from core import logger, webrequest
 from core.errors import CaptchaUnsolvedError
 
 
@@ -89,8 +89,8 @@ class Captcha:
         url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"
         data = self.__get_captcha_check_data(answer)
         try:
-            json_data = webrequest.post_json(url, data=data, cookies=self.__cookies)["data"]
-            success = common.is_true(json_data)
+            json = webrequest.post_json(url, data=data, cookies=self.__cookies)
+            success = json.get_bool("data")
         except HTTPError as ex:
             if ex.response.status_code == 406:
                 success = False

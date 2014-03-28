@@ -20,11 +20,6 @@ from core import logger
 
 
 class SessionCookies(dict):
-    @property
-    def session_id(self):
-        # noinspection PyTypeChecker
-        return self.get("JSESSIONID")
-
     @classmethod
     def __handle_cookie_changed(cls, name, value):
         return {
@@ -36,12 +31,10 @@ class SessionCookies(dict):
     def __handle_other_cookie(name, value):
         pass
 
-    # noinspection PyUnusedLocal
     @staticmethod
     def __handle_session_id(name, value):
         logger.debug("Got new session ID: " + value)
 
-    # noinspection PyUnusedLocal
     @staticmethod
     def __handle_server_ip(name, value):
         logger.debug("Got new server IP: " + value)
@@ -57,7 +50,7 @@ class SessionCookies(dict):
         ip_3, ip_2 = divmod(ip_encoded, 256)
         port_1, port_0 = divmod(port_encoded, 256)
         port = port_0 * 256 + port_1
-        logger.debug("Decoded server IP: {0}.{1}.{2}.{3}:{4}".format(ip_0, ip_1, ip_2, ip_3, port))
+        logger.debug("Decoded server IP: {}.{}.{}.{}:{}".format(ip_0, ip_1, ip_2, ip_3, port))
 
     def update_cookies(self, response):
         # This function parses an HTTP response and sets the

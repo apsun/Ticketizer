@@ -17,48 +17,6 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 from datetime import datetime
-from itertools import islice
-
-
-def between(string, start, end):
-    begin = string.index(start) + len(start)
-    end = string.index(end)
-    return string[begin:end]
-
-
-def slice_list(iterable, start=None, end=None, step=None):
-    # If you REALLY like your negative end indices,
-    # you can have them (only if you can natively call
-    # len() on the iterable)
-    if end is not None and end < 0:
-        end %= len(iterable)
-    # For some reason PyCharm thinks islice's constructor
-    # has the signature __init__(iterable, end). This avoids
-    # a warning every time you use itertools.islice.
-    # noinspection PyArgumentList
-    return islice(iterable, start, end, step)
-
-
-def get_dict_value_coalesce(value, *keys):
-    # If the dictionary is None, coalesce the result to None
-    if value is None:
-        return None
-    # If there are no more keys to check, return the current result
-    if len(keys) == 0:
-        return value
-    # Pop first key from the list, using that as the next dictionary key
-    key, *keys = keys
-    return get_dict_value_coalesce(value.get(key), *keys)
-
-
-def flatten_dict(value):
-    combined = {}
-    for k, v in value.items():
-        if isinstance(v, dict):
-            combined.update(flatten_dict(v))
-        else:
-            combined[k] = v
-    return combined
 
 
 def datetime_to_str(datetime_obj, fmt="%Y-%m-%d %H:%M"):
@@ -101,27 +59,3 @@ def timedelta_to_str(timedelta_obj, force_seconds=False):
     if force_seconds or seconds != 0:
         fmt += "{2:02d}"
     return fmt.format(hours, minutes, seconds)
-
-
-def is_true(value):
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        if value == "Y" or value == "true":
-            return True
-        if value == "N" or value == "false":
-            return False
-    return False
-    # raise ValueError("Unknown boolean value: " + str(value))
-
-
-def join_list(value, separator="; "):
-    if value is None:
-        return None
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list):
-        if len(value) == 0:
-            return None
-        return separator.join(value)
-    raise ValueError("Argument is not a list or string")
