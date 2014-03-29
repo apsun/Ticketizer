@@ -171,13 +171,10 @@ class Train:
         self.ticket_prices_fetched = True
         logger.debug("Fetched ticket prices for train " + self.name)
 
-    def __str__(self):
+    def __repr__(self):
         return "{0} (ID: {1}) from {2} to {3}".format(
             self.name,
             self.id,
             self.departure_station.name,
             self.destination_station.name
         )
-
-    def __repr__(self):
-        return str(self)

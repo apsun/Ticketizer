@@ -28,13 +28,10 @@ class Passenger:
         self.type = passenger_data["passenger_type"]
         self.phone_number = passenger_data["mobile_no"]
 
-    def __str__(self):
+    def __repr__(self):
         return "{0} (gender: {1}, type: {2}, ID: {3}->{4})".format(
             self.name,
             self.gender,
             PassengerType.TEXT_LOOKUP[self.type],
             IdentificationType.TEXT_LOOKUP[self.id_type],
             self.id_number)
-
-    def __repr__(self):
-        return str(self)

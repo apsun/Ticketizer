@@ -22,7 +22,6 @@ from core import logger, webrequest
 class Station:
     def __init__(self, data_list):
         # Format of each entry is as follows:
-        # bjb|北京北|VAP|beijingbei|bjb|0
         # 0 -> defines alphabetical order, pretty useless
         # 1 -> user-friendly name
         # 2 -> station ID
@@ -41,11 +40,8 @@ class Station:
     def __ne__(self, other):
         return not self == other
 
-    def __str__(self):
-        return "{0} (ID: {1})".format(self.name, self.id)
-
     def __repr__(self):
-        return str(self)
+        return "{0} (ID: {1})".format(self.name, self.id)
 
 
 class StationList:

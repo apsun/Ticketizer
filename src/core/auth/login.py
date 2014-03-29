@@ -66,14 +66,15 @@ class LoginManager:
                 raise InvalidPasswordError()
             json.raise_error()
         username = json["data"]["username"]
-        logger.debug("Successfully logged in to user " + username)
+        logger.debug("Successfully logged in to user {0}".format(username))
         self.__username = username
         return self
 
     def logout(self):
         webrequest.get("https://kyfw.12306.cn/otn/login/loginOut", cookies=self.__cookies, allow_redirects=False)
         if self.__username is not None:
-            logger.debug("Logged out of user: " + str(self.__username))
+            # noinspection PyTypeChecker
+            logger.debug("Logged out of user: " + self.__username)
         else:
             logger.warning("Logged out of unknown user")
         return self

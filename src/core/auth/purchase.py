@@ -19,8 +19,8 @@
 # TODO: Return variables required to auto-open the purchase site
 # TODO: Implement purchasing of round-trip tickets
 
-import urllib.parse
 import re
+import urllib.parse as urllib
 from core import timeconverter, webrequest, logger
 from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
 from core.errors import UnfinishedTransactionError, DataExpiredError, StopPurchaseQueue
@@ -56,7 +56,7 @@ class TicketPurchaser:
             "query_to_station_name": self.train.destination_station.name,
             # Need to unescape this string or else it will become
             # double-escaped when we send the request.
-            "secretStr": urllib.parse.unquote(self.train.data["secret_key"]),
+            "secretStr": urllib.unquote(self.train.data["secret_key"]),
             "tour_flag": self.direction,
             "train_date": timeconverter.date_to_str(self.train.departure_time.date())
         }
@@ -157,11 +157,12 @@ class TicketPurchaser:
         try:
             webrequest.post_json(url, data=data, cookies=self.__cookies)
         except RequestError as ex:
-            msg = ex.args[0]
-            if msg.startswith("您还有未处理的订单"):
-                raise UnfinishedTransactionError() from ex
-            if msg.startswith("车票信息已过期"):
-                raise DataExpiredError() from ex
+            if len(ex.args) > 0:
+                msg = ex.args[0]
+                if msg.startswith("您还有未处理的订单"):
+                    raise UnfinishedTransactionError() from ex
+                if msg.startswith("车票信息已过期"):
+                    raise DataExpiredError() from ex
             raise
 
     def __check_order_info(self, passenger_strs, captcha):

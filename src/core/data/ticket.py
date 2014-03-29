@@ -65,7 +65,7 @@ class Ticket:
     def price(self, value):
         self.__price = value
 
-    def __str__(self):
+    def __repr__(self):
         count_info = {
             TicketStatus.NOT_APPLICABLE: "not applicable",
             TicketStatus.NOT_YET_SOLD: "not yet sold",
@@ -77,6 +77,3 @@ class Ticket:
             TicketType.FULL_NAME_LOOKUP[self.type],
             count_info
         )
-
-    def __repr__(self):
-        return str(self)

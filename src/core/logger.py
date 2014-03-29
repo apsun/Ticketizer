@@ -36,33 +36,61 @@ class LogType:
         ERROR: "E"
     }
 
+    REVERSE_NAME_LOOKUP = {
+        "D": DEBUG,
+        "N": NETWORK,
+        "W": WARNING,
+        "E": ERROR
+    }
+
 # Setup color and stuff
 enabled_log_types = LogType.ALL
 
 __colors = {
-    LogType.NONE: lambda: None,
-    LogType.DEBUG: lambda: None,
-    LogType.NETWORK: lambda: None,
-    LogType.WARNING: lambda: None,
-    LogType.ERROR: lambda: None
+    LogType.NONE: lambda s: None,
+    LogType.DEBUG: lambda s: None,
+    LogType.NETWORK: lambda s: None,
+    LogType.WARNING: lambda s: None,
+    LogType.ERROR: lambda s: None
 }
+
+__streams = {
+    LogType.DEBUG: sys.stdout,
+    LogType.NETWORK: sys.stdout,
+    LogType.WARNING: sys.stdout,
+    LogType.ERROR: sys.stderr
+}
+
 
 if hasattr(sys.stderr, "isatty") and sys.stdout.isatty():
     if os.name == "nt":
         import ctypes
         SetConsoleTextAttribute = ctypes.windll.kernel32.SetConsoleTextAttribute
         GetStdHandle = ctypes.windll.kernel32.GetStdHandle
-        __colors[LogType.DEBUG] = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x02)
-        __colors[LogType.NETWORK] = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x05)
-        __colors[LogType.WARNING] = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x06)
-        __colors[LogType.ERROR] = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x04)
-        __colors[LogType.NONE] = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x07)
+        color = lambda s: SetConsoleTextAttribute(GetStdHandle(-11), s)
+        __colors[LogType.DEBUG] = lambda s: color(0x02)
+        __colors[LogType.NETWORK] = lambda s: color(0x05)
+        __colors[LogType.WARNING] = lambda s: color(0x06)
+        __colors[LogType.ERROR] = lambda s: color(0x04)
+        __colors[LogType.NONE] = lambda s: color(0x07)
     elif os.name == "posix":
-        __colors[LogType.DEBUG] = lambda: sys.stdout.write('\033[32m')
-        __colors[LogType.NETWORK] = lambda: sys.stdout.write('\033[35m')
-        __colors[LogType.WARNING] = lambda: sys.stdout.write('\033[33m')
-        __colors[LogType.ERROR] = lambda: sys.stdout.write('\033[31m')
-        __colors[LogType.NONE] = lambda: sys.stdout.write('\033[0m')
+        __colors[LogType.DEBUG] = lambda s: s.write("\033[32m")
+        __colors[LogType.NETWORK] = lambda s: s.write("\033[35m")
+        __colors[LogType.WARNING] = lambda s: s.write("\033[33m")
+        __colors[LogType.ERROR] = lambda s: s.write("\033[31m")
+        __colors[LogType.NONE] = lambda s: s.write("\033[0m")
+
+
+def set_color(log_type):
+    __colors[log_type](__streams[log_type])
+
+
+def reset_color(log_type):
+    __colors[LogType.NONE](__streams[log_type])
+
+
+def write(log_type, msg):
+    __streams[log_type].write(msg + os.linesep)
 
 
 def log(log_type, msg):
@@ -88,9 +116,9 @@ def log(log_type, msg):
     else:
         curr_time = None
 
-    __colors[log_type]()
-    print(fmt_str.format(LogType.NAME_LOOKUP[log_type], curr_time, msg))
-    __colors[LogType.NONE]()
+    set_color(log_type)
+    write(log_type, fmt_str.format(LogType.NAME_LOOKUP[log_type], curr_time, msg))
+    reset_color(log_type)
 
 
 def error(msg):

@@ -42,6 +42,17 @@ class ValueRange:
             else:
                 return lower <= value <= upper
 
+    @staticmethod
+    def from_tuple(value, factory):
+        if value is None:
+            return ValueRange()
+        lower, upper = value
+        if lower is not None:
+            lower = factory(lower)
+        if upper is not None:
+            upper = factory(upper)
+        return ValueRange(lower, upper)
+
 
 class BitFlags:
     def __init__(self, default_flags):
@@ -107,35 +118,3 @@ class FlagSet:
 
     def clear(self):
         self.__set.clear()
-
-
-class StringPrioritizer:
-    def __init__(self, values):
-        priority_dict = {}
-        if isinstance(values, list):
-            for i, value in enumerate(values):
-                if not isinstance(value, str):
-                    raise TypeError()
-                priority_dict[value] = i
-        elif isinstance(values, set):
-            for value in values:
-                if not isinstance(value, str):
-                    raise TypeError()
-                priority_dict[value] = 0
-        elif isinstance(values, tuple):
-            index = 0
-            for subvalues in values:
-                if not isinstance(subvalues, (set, list)):
-                    raise TypeError()
-                for value in subvalues:
-                    if not isinstance(value, str):
-                        raise TypeError()
-                    priority_dict[value] = index
-                    if isinstance(subvalues, list):
-                        index += 1
-        else:
-            raise TypeError()
-        self.__priority_dict = priority_dict
-
-    def __getitem__(self, item):
-        return self.__priority_dict[item]

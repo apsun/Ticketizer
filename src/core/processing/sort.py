@@ -17,7 +17,36 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 
-from core.processing.containers import StringPrioritizer
+class PriorityList(dict):
+    def __init__(self, values):
+        super(PriorityList, self).__init__()
+        if isinstance(values, list):
+            for i, value in enumerate(values):
+                if not isinstance(value, str):
+                    raise TypeError()
+                self.setdefault(value, i)
+        elif isinstance(values, set):
+            for value in values:
+                if not isinstance(value, str):
+                    raise TypeError()
+                self[value] = 0
+        elif isinstance(values, tuple):
+            index = 0
+            for subvalues in values:
+                if not isinstance(subvalues, (set, list)):
+                    raise TypeError()
+                for value in subvalues:
+                    if not isinstance(value, str):
+                        raise TypeError()
+                    self.setdefault(value, index)
+                    if isinstance(subvalues, list):
+                        index += 1
+                index += 1
+        else:
+            raise TypeError()
+
+    def __getitem__(self, item):
+        return self.get(item, len(self))
 
 
 class TrainSorter:
@@ -26,11 +55,14 @@ class TrainSorter:
         self.sort_methods = []
 
     def sort(self, train_list):
-        for sorter in self.sort_methods:
-            if isinstance(sorter, str):
-                sorter = self.__sort_method_dispatch(sorter)
-            sorter(train_list)
-        self.__sort_by_favorites(train_list)
+        if self.sort_methods is not None:
+            for sorter in self.sort_methods:
+                if isinstance(sorter, str):
+                    sorter = self.__sort_method_dispatch(sorter)
+                sorter(train_list)
+
+        if self.favorites is not None:
+            train_list.sort(key=lambda x: self.favorites[x.name])
 
     @classmethod
     def __sort_method_dispatch(cls, method_name):
@@ -46,17 +78,6 @@ class TrainSorter:
             "duration": cls.__sort_by_duration,
             "price": cls.__sort_by_price
         }[method_name](train_list, reverse)
-
-    def __sort_by_favorites(self, train_list):
-        # Sorts the train list using the specified key,
-        # keeping "favorite" trains in the front.
-        favorites = self.favorites
-        if favorites is None:
-            return
-        if not isinstance(favorites, StringPrioritizer):
-            # Succeed or die trying!
-            favorites = StringPrioritizer(favorites)
-        train_list.sort(key=lambda x: favorites[x.name])
 
     @staticmethod
     def __sort_by_name(train_list, reverse):

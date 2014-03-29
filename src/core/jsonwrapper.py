@@ -21,7 +21,7 @@ from core.errors import RequestError
 
 class JsonList(list):
     def __init__(self, json_list, parent):
-        super().__init__()
+        super(JsonList, self).__init__()
         self.parent = parent
         for item in json_list:
             if isinstance(item, dict):
@@ -34,7 +34,7 @@ class JsonList(list):
 
 class JsonDict(dict):
     def __init__(self, json_dict, parent):
-        super().__init__()
+        super(JsonDict, self).__init__()
         self.parent = parent
         for k, v in json_dict.items():
             if isinstance(v, dict):
@@ -77,13 +77,13 @@ class JsonDict(dict):
 
 class RootJsonList(JsonList):
     def __init__(self, json_list, response):
-        super().__init__(json_list, None)
+        super(RootJsonList, self).__init__(json_list, None)
         self.response = response
 
 
 class RootJsonDict(JsonDict):
     def __init__(self, json_dict, response, check_status=True):
-        super().__init__(json_dict, None)
+        super(RootJsonDict, self).__init__(json_dict, None)
         self.response = response
         if check_status and not self.get("status"):
             self.raise_error()
