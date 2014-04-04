@@ -28,12 +28,6 @@ class LoginManager:
     def __init__(self):
         self.__cookies = SessionCookies()
 
-    def __del__(self):
-        # Doesn't matter if this throws an exception; it will be ignored anyways
-        # if self.__username is not None:
-        #     self.logout()
-        pass
-
     @staticmethod
     def __get_login_params(username, password, captcha_answer):
         return {
@@ -42,40 +36,36 @@ class LoginManager:
             "randCode": captcha_answer
         }
 
-    def __is_logged_in(self):
+    def is_logged_in(self):
         url = "https://kyfw.12306.cn/otn/login/checkUser"
         json = webrequest.post_json(url, cookies=self.__cookies)
         return json["data"].get_bool("flag")
 
     def get_purchaser(self):
-        if not self.__is_logged_in():
+        if not self.is_logged_in():
             raise InvalidOperationError("Cannot purchase tickets without logging in")
         return TicketPurchaser(self.__cookies)
 
-    def login(self, email, password, captcha):
-        data = self.__get_login_params(email, password, captcha.answer)
+    def login(self, username, password, captcha):
+        data = self.__get_login_params(username, password, captcha.answer)
         url = "https://kyfw.12306.cn/otn/login/loginAysnSuggest"
         try:
             json = webrequest.post_json(url, data=data, cookies=self.__cookies)
             json["data"].assert_true("loginCheck")
         except RequestError as ex:
-            if len(ex.args) > 0:
-                msg = ex.args[0]
-                if msg == "登录名不存在!":
-                    raise InvalidUsernameError() from ex
-                if msg.startswith("密码输入错误"):
-                    raise InvalidPasswordError() from ex
-                if msg.startswith("您的用户已经被锁定"):
-                    raise TooManyLoginAttemptsError() from ex
+            msg = ex.args[0]
+            if msg == "登录名不存在!":
+                raise InvalidUsernameError() from ex
+            if msg.startswith("密码输入错误"):
+                raise InvalidPasswordError() from ex
+            if msg.startswith(("您的用户已经被锁定", "密码输入次数已超过")):
+                raise TooManyLoginAttemptsError() from ex
             raise
+        logger.debug("Successfully logged in with username: " + username)
 
     def logout(self):
         webrequest.get("https://kyfw.12306.cn/otn/login/loginOut", cookies=self.__cookies, allow_redirects=False)
-        if self.__username is not None:
-            # noinspection PyTypeChecker
-            logger.debug("Logged out of user: " + self.__username)
-        else:
-            logger.warning("Logged out of unknown user")
+        logger.debug("Successfully logged out")
 
     def get_login_captcha(self):
         return Captcha(CaptchaType.LOGIN, self.__cookies)

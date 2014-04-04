@@ -55,7 +55,7 @@ class TrainQuery:
         try:
             json_data = json["data"]
         except RequestError as ex:
-            if len(ex.args) > 0 and ex.args[0] == "选择的查询日期不在预售日期范围内":
+            if ex.args[0] == "选择的查询日期不在预售日期范围内":
                 raise InvalidTicketDateError() from ex
             raise
         logger.debug("Got train list from {0} to {1} on {2}".format(

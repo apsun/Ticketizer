@@ -44,3 +44,5 @@ ORDER_COMPLETED = "Order completed! Order ID: {0}"
 ENTER_TRANSFER_TIME = "Enter the {0} transfer time (format: hh:mm): "
 MINIMUM = "minimum"
 MAXIMUM = "maximum"
+TOO_MANY_LOGIN_ATTEMPTS = "Too many login attempts! Use a different account " \
+                          "or try again at a later time!"

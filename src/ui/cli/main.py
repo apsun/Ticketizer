@@ -16,17 +16,16 @@
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
-import codecs
-import importlib
 import os
-import argparse
 import time
-import getpass
+import codecs
+import argparse
+import importlib
+import webbrowser
+# import getpass
 from core import timeconverter, logger
 from core.logger import LogType
-from core.errors import StopPurchaseQueue
-from core.errors import InvalidUsernameError, InvalidPasswordError
-from core.errors import UnfinishedTransactionError, DataExpiredError
+from core.errors import *
 from core.enums import TrainType, TicketType, TicketStatus
 from core.processing.containers import ValueRange
 from core.processing.filter import TrainFilter
@@ -45,9 +44,11 @@ class ConsoleCaptchaSolver:
 
     @classmethod
     def on_new_image(cls, image_data):
-        with open(cls.CAPTCHA_PATH, "wb") as f:
+        path = os.path.abspath(cls.CAPTCHA_PATH)
+        with open(path, "wb") as f:
             f.write(image_data)
-        print(localization.CAPTCHA_SAVED.format(os.path.abspath(cls.CAPTCHA_PATH)))
+        print(localization.CAPTCHA_SAVED.format(path))
+        webbrowser.open(path)
 
     @staticmethod
     def request_input():
@@ -63,7 +64,7 @@ class ConsoleCaptchaSolver:
 
     @classmethod
     def on_end(cls):
-        os.remove(cls.CAPTCHA_PATH)
+        os.remove(os.path.abspath(cls.CAPTCHA_PATH))
 
 
 def solve_captcha(image_factory, solver_factory):
@@ -200,10 +201,13 @@ def login(auto, retry, on_invalid_username=None, on_invalid_password=None):
             if username is None:
                 username = input(localization.ENTER_USERNAME)
             if password is None:
-                password = getpass.getpass(localization.ENTER_PASSWORD)
+                password = input(localization.ENTER_PASSWORD)
+                # Weird issue with the IntelliJ console and getpass,
+                # So we fall back to input() for now.
+                # password = getpass.getpass(localization.ENTER_PASSWORD)
             captcha_answer = solve_captcha(login_manager.get_login_captcha, captcha_solver)
         except KeyboardInterrupt:
-            # User interrupted login info entering process
+            # User interrupted login info entry process
             return None
         error = do_login(login_manager, username, password, captcha_answer)
         if error is None:
@@ -230,14 +234,19 @@ def query(station_list, auto):
     return train_list
 
 
-def purchase(login_manager, train, auto):
+def purchase(login_manager, train_list, auto):
+    try:
+        train = select_train(train_list, auto)
+    except KeyboardInterrupt:
+        return None
+
     purchaser = login_manager.get_purchaser()
     purchaser.train = train
     try:
         purchaser.begin_purchase()
     except UnfinishedTransactionError:
         print(localization.UNFINISHED_TRANSACTIONS)
-        return
+        return None
     except DataExpiredError:
         # This means the user waited too long between
         # querying train data and submitting the order.
@@ -245,15 +254,19 @@ def purchase(login_manager, train, auto):
         # one time after refreshing the train data.
         raise
 
-    passenger_list = purchaser.get_passenger_list()
-    selected_passenger_list = passenger_selector(passenger_list, auto)
-    available_tickets = [t for t in train.tickets if t.status == TicketStatus.NORMAL]
-    selected_ticket_dict = ticket_selector(selected_passenger_list, available_tickets, auto)
-    captcha_solver = auto and config.get("captcha_solver") or ConsoleCaptchaSolver
-    captcha_answer = solve_captcha(purchaser.get_purchase_captcha, captcha_solver)
+    try:
+        passenger_list = purchaser.get_passenger_list()
+        selected_passenger_list = select_passengers(passenger_list, auto)
+        available_tickets = [t for t in train.tickets if t.status == TicketStatus.NORMAL]
+        selected_ticket_dict = select_tickets(selected_passenger_list, available_tickets, auto)
+        captcha_solver = auto and config.get("captcha_solver") or ConsoleCaptchaSolver
+        captcha_answer = solve_captcha(purchaser.get_purchase_captcha, captcha_solver)
+    except KeyboardInterrupt:
+        return None
     order_id = purchaser.continue_purchase(selected_ticket_dict, captcha_answer, purchase_queue_callback)
     if order_id is not None:
         print(localization.ORDER_COMPLETED.format(order_id))
+    return order_id
 
 
 def purchase_queue_callback(queue_length):
@@ -265,34 +278,36 @@ def purchase_queue_callback(queue_length):
         raise StopPurchaseQueue()
 
 
-def train_selector(train_list, auto):
+def select_train(train_list, auto):
     # TODO: Add automation
     return prompt_value(
-        header=lambda: list_printer(train_list, starting_index=None),
+        header=lambda: print_list(train_list, starting_index=None),
         prompt=localization.ENTER_TRAIN_NAME,
-        input_parser=lambda a: list_value_parser(train_list, a, lambda t: t.name),
+        input_parser=lambda a: parse_list_value(train_list, a, lambda t: t.name),
         error_handler=localization.INVALID_TRAIN_NAME
     )
 
 
-def passenger_selector(passenger_list, auto):
+def select_passengers(passenger_list, auto):
     # TODO: Add automation
     return prompt_value(
-        header=lambda: list_printer(passenger_list, lambda p: p.name),
+        header=lambda: print_list(passenger_list, lambda p: p.name),
         prompt=localization.ENTER_PASSENGER_INDEX,
-        input_parser=lambda a: list_index_parser(passenger_list, a, multi_separator=","),
+        input_parser=lambda a: parse_list_index(passenger_list, a, multi_separator=","),
         error_handler=localization.INVALID_PASSENGER_INDEX.format(1, len(passenger_list))
     )
 
 
-def ticket_selector(passenger_list, ticket_list, auto):
+def select_tickets(passenger_list, ticket_list, auto):
     # TODO: Add automation
-    # TODO: Fix selection (show table)
+    print_list(ticket_list, lambda t: "{0} ({1} remaining)".format(
+        TicketType.FULL_NAME_LOOKUP[t.type], t.count
+    ))
     passenger_dict = {}
     for passenger in passenger_list:
         ticket = prompt_value(
             prompt=localization.ENTER_TICKET_INDEX.format(passenger.name),
-            input_parser=lambda a: list_index_parser(ticket_list, a),
+            input_parser=lambda a: parse_list_index(ticket_list, a),
             error_handler=localization.INVALID_TICKET_INDEX.format(1, len(ticket_list)))
         passenger_dict[passenger] = ticket
     return passenger_dict
@@ -310,9 +325,9 @@ def get_station_by_name(station_list, name):
                 station = station[0]
             else:
                 station = prompt_value(
-                    header=list_printer(station, lambda s: s.name),
+                    header=print_list(station, lambda s: s.name),
                     prompt=localization.ENTER_STATION_INDEX,
-                    input_parser=lambda a: list_index_parser(station, a),
+                    input_parser=lambda a: parse_list_index(station, a),
                     error_handler=localization.INVALID_STATION_INDEX.format(1, len(station))
                 )
         if station is not None:
@@ -320,7 +335,7 @@ def get_station_by_name(station_list, name):
     raise KeyError(name)
 
 
-def list_printer(item_list, item_repr=None, starting_index=1):
+def print_list(item_list, item_repr=None, starting_index=1):
     if starting_index is None:
         for item in item_list:
             if item_repr is not None:
@@ -333,7 +348,33 @@ def list_printer(item_list, item_repr=None, starting_index=1):
             print("{0}. {1}".format(index + starting_index, item))
 
 
-def list_value_parser(item_list, input_value, item_repr=None, case_sensitive=False, multi_separator=None):
+def parse_list_value(item_list, input_value, item_repr=None, case_sensitive=False, multi_separator=None):
+    # Parses a user-inputted value from a list and returns the
+    # item after ensuring that it is a valid entry in the list.
+    #
+    # item_list:
+    #   The list to validate the input against.
+    #
+    # input_value:
+    #   The user-inputted value. This must be a string.
+    #
+    # item_repr:
+    #   A function that takes a list item as a parameter and
+    #   returns the value that the input should be compared
+    #   against to be considered equal. If the list is not
+    #   a list of strings and this parameter is not specified,
+    #   the input will be compared against each list item's
+    #   default string representation.
+    #
+    # case_sensitive:
+    #   Whether to consider input casing when comparing user
+    #   input against list values. Unless case sensitivity
+    #   matters, setting this to False is highly recommended.
+    #
+    # multi_separator:
+    #   Allows the user to input multiple values at once. This
+    #   can either be a string on which to split the user input,
+    #   or None to specify that input should not be splitted.
     def get_item_as_str(value):
         if item_repr is not None:
             value = item_repr(value)
@@ -364,7 +405,25 @@ def list_value_parser(item_list, input_value, item_repr=None, case_sensitive=Fal
         return results
 
 
-def list_index_parser(item_list, input_value, starting_index=1, multi_separator=None):
+def parse_list_index(item_list, input_value, starting_index=1, multi_separator=None):
+    # Parses a user-inputted list index and validates it,
+    # returning the item in the list at the inputted index.
+    #
+    # item_list:
+    #   The list to validate the input against.
+    #
+    # input_value:
+    #   The user-inputted list index. This must be a string.
+    #
+    # starting_index:
+    #   The index which is translated to the first item in the
+    #   list. For example, if you are displaying entries
+    #   starting from index 1, then this value should also be 1.
+    #
+    # multi_separator:
+    #   Allows the user to input multiple indices at once. This
+    #   can either be a string on which to split the user input,
+    #   or None to specify that input should not be splitted.
     if multi_separator is None:
         index = int(input_value) - starting_index
         if index < 0:
@@ -382,6 +441,10 @@ def list_index_parser(item_list, input_value, starting_index=1, multi_separator=
 
 
 def prompt_value(header=None, prompt=None, input_parser=None, error_handler=None):
+    # Prompts the user for input, with additional validation built in.
+    # This is similar to the input() function, but it also allows you to
+    # automate input validation and conversion.
+    #
     # header:
     #   Used to print the information the user uses to select an item.
     #   Can either be a string (directly printed) or a callable object
@@ -414,7 +477,7 @@ def prompt_value(header=None, prompt=None, input_parser=None, error_handler=None
         except Exception as ex:
             if error_handler is not None:
                 if isinstance(error_handler, str):
-                    logger.error(repr(ex))
+                    # logger.error(repr(ex))
                     print(error_handler)
                 else:
                     error_handler(ex)
@@ -506,6 +569,7 @@ def setup():
 def print_config():
     print("-" * 33 + "Config values" + "-" * 33)
     for key, value in config.items():
+        # Ignore built-in keys
         if key[:2] == key[-2:] == "__":
             continue
         print(key + ": " + repr(value))
@@ -516,12 +580,31 @@ def main():
     auto, success = setup()
     if not success:
         return
-    print_config()
+    # print_config()
+
+    # Get stations
     station_list = StationList()
-    login_manager = login(auto, True)
+
+    # Get trains for stations
     train_list = query(station_list, auto)
-    train = train_selector(train_list, auto)
-    purchase(login_manager, train, auto)
+
+    # Log in to account
+    try:
+        login_manager = login(auto, True)
+    except TooManyLoginAttemptsError:
+        print(localization.TOO_MANY_LOGIN_ATTEMPTS)
+    if login_manager is None:
+        print("Login canceled!")
+        return
+
+    # Purchase tickets
+    try:
+        order_id = purchase(login_manager, train_list, auto)
+    except DataExpiredError:
+        train_list = query(station_list, auto)
+        purchase(login_manager, train_list, auto)
+    if order_id is None:
+        print("Purchase interrupted!")
 
 
 if __name__ == "__main__":

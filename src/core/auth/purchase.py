@@ -157,12 +157,11 @@ class TicketPurchaser:
         try:
             webrequest.post_json(url, data=data, cookies=self.__cookies)
         except RequestError as ex:
-            if len(ex.args) > 0:
-                msg = ex.args[0]
-                if msg.startswith("您还有未处理的订单"):
-                    raise UnfinishedTransactionError() from ex
-                if msg.startswith("车票信息已过期"):
-                    raise DataExpiredError() from ex
+            msg = ex.args[0]
+            if msg.startswith("您还有未处理的订单"):
+                raise UnfinishedTransactionError() from ex
+            if msg.startswith("车票信息已过期"):
+                raise DataExpiredError() from ex
             raise
 
     def __check_order_info(self, passenger_strs, captcha):
