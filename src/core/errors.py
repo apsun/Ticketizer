@@ -33,12 +33,17 @@ class InvalidPasswordError(LoginFailedError):
     pass
 
 
+class TooManyLoginAttemptsError(LoginFailedError):
+    pass
+
+
 class PurchaseFailedError(Exception):
     pass
 
 
 class RequestError(Exception):
-    pass
+    def __init__(self, msg, json, response):
+        super(RequestError, self).__init__(msg, json, response)
 
 
 class CaptchaUnsolvedError(Exception):

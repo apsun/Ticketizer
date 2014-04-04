@@ -53,8 +53,7 @@ class Train:
         self.destination_index = query_data["to_station_no"]
         # Whether we can buy any tickets for this train
         self.can_buy = query_data.get_bool("canWebBuy")
-        # Data that we don't use, but is still required for
-        # purchasing tickets.
+        # Data that we don't use, but is still required for purchasing tickets.
         self.data = {
             # Required for getting train path.
             # Can be, but IS NOT ALWAYS, the same
@@ -158,7 +157,7 @@ class Train:
                 lookup = TicketType.REVERSE_ID2_LOOKUP
             else:
                 try:
-                    num_value = int(value)/10
+                    num_value = int(value)/10.0
                     lookup = TicketType.REVERSE_ID_LOOKUP
                 except ValueError:
                     continue

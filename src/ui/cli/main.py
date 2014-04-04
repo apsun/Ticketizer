@@ -21,9 +21,10 @@ import importlib
 import os
 import argparse
 import time
+import getpass
 from core import timeconverter, logger
 from core.logger import LogType
-from core.errors import StopCaptchaRetry, StopPurchaseQueue
+from core.errors import StopPurchaseQueue
 from core.errors import InvalidUsernameError, InvalidPasswordError
 from core.errors import UnfinishedTransactionError, DataExpiredError
 from core.enums import TrainType, TicketType, TicketStatus
@@ -50,10 +51,7 @@ class ConsoleCaptchaSolver:
 
     @staticmethod
     def request_input():
-        try:
-            answer = input(localization.ENTER_CAPTCHA)
-        except KeyboardInterrupt:
-            raise StopCaptchaRetry()
+        answer = input(localization.ENTER_CAPTCHA)
         test_answer = answer.upper()
         if test_answer == "":
             answer = None
@@ -76,10 +74,7 @@ def solve_captcha(image_factory, solver_factory):
             captcha_image = image_factory()
             solver.on_new_image(captcha_image.image_data)
             while True:
-                try:
-                    answer = solver.request_input()
-                except StopCaptchaRetry:
-                    return None
+                answer = solver.request_input()
                 if answer is not None:
                     success = captcha_image.check_answer(answer)
                     if success:
@@ -139,7 +134,7 @@ def create_train_filters():
 def create_train_sorters():
     sorter_obj = TrainSorter()
     sorter_obj.sort_methods = config.get("train_sorters")
-    sorter_obj.favorites = PriorityList(config.get("favorite_trains"))
+    sorter_obj.favorites = PriorityList(config.get("favorite_trains") or [])
     return sorter_obj
 
 
@@ -169,22 +164,61 @@ def create_train_query(station_list, auto):
     return query_obj
 
 
-def login(auto):
+def login(auto, retry, on_invalid_username=None, on_invalid_password=None):
+    def do_login(lm, un, pw, ca):
+        try:
+            lm.login(un, pw, ca)
+        except InvalidUsernameError:
+            if on_invalid_username is None:
+                print(localization.INCORRECT_USERNAME)
+            elif isinstance(on_invalid_username, str):
+                print(on_invalid_username)
+            else:
+                on_invalid_username()
+            return "username"
+        except InvalidPasswordError:
+            if on_invalid_password is None:
+                print(localization.INCORRECT_PASSWORD)
+            elif isinstance(on_invalid_password, str):
+                print(on_invalid_password)
+            else:
+                on_invalid_password()
+            return "password"
+        return None
+
     login_manager = LoginManager()
-    username = auto and config.get("username") or input(localization.ENTER_USERNAME)
-    password = auto and config.get("password") or input(localization.ENTER_PASSWORD)
     captcha_solver = auto and config.get("captcha_solver") or ConsoleCaptchaSolver
-    captcha_answer = solve_captcha(login_manager.get_login_captcha, captcha_solver)
-    if captcha_answer is None:
-        return
-    try:
-        return login_manager.login(username, password, captcha_answer)
-    except InvalidUsernameError:
-        print(localization.INCORRECT_USERNAME)
-        return None
-    except InvalidPasswordError:
-        print(localization.INCORRECT_PASSWORD)
-        return None
+    if auto:
+        username = config.get("username")
+        password = config.get("password")
+    else:
+        username = None
+        password = None
+
+    while True:
+        try:
+            if username is None:
+                username = input(localization.ENTER_USERNAME)
+            if password is None:
+                password = getpass.getpass(localization.ENTER_PASSWORD)
+            captcha_answer = solve_captcha(login_manager.get_login_captcha, captcha_solver)
+        except KeyboardInterrupt:
+            # User interrupted login info entering process
+            return None
+        error = do_login(login_manager, username, password, captcha_answer)
+        if error is None:
+            # Everything went ok!
+            return login_manager
+        if not retry:
+            # Retrying disabled; do not proceed.
+            return None
+        if error == "username":
+            username = None
+            # Don't clear the password; what if the user
+            # just misspelled their username?
+            # password = None
+        elif error == "password":
+            password = None
 
 
 def query(station_list, auto):
@@ -233,20 +267,21 @@ def purchase_queue_callback(queue_length):
 
 def train_selector(train_list, auto):
     # TODO: Add automation
-    # TODO: Fix selection (show table)
     return prompt_value(
-        header=lambda: list_header_printer(train_list),
+        header=lambda: list_printer(train_list, starting_index=None),
         prompt=localization.ENTER_TRAIN_NAME,
-        input_parser=lambda a: list_input_parser(train_list, a)
+        input_parser=lambda a: list_value_parser(train_list, a, lambda t: t.name),
+        error_handler=localization.INVALID_TRAIN_NAME
     )
 
 
 def passenger_selector(passenger_list, auto):
     # TODO: Add automation
     return prompt_value(
-        header=lambda: list_header_printer(passenger_list),
+        header=lambda: list_printer(passenger_list, lambda p: p.name),
         prompt=localization.ENTER_PASSENGER_INDEX,
-        input_parser=lambda a: list_input_parser(passenger_list, a, multi_separator=",")
+        input_parser=lambda a: list_index_parser(passenger_list, a, multi_separator=","),
+        error_handler=localization.INVALID_PASSENGER_INDEX.format(1, len(passenger_list))
     )
 
 
@@ -257,7 +292,7 @@ def ticket_selector(passenger_list, ticket_list, auto):
     for passenger in passenger_list:
         ticket = prompt_value(
             prompt=localization.ENTER_TICKET_INDEX.format(passenger.name),
-            input_parser=lambda a: list_input_parser(ticket_list, a),
+            input_parser=lambda a: list_index_parser(ticket_list, a),
             error_handler=localization.INVALID_TICKET_INDEX.format(1, len(ticket_list)))
         passenger_dict[passenger] = ticket
     return passenger_dict
@@ -275,9 +310,9 @@ def get_station_by_name(station_list, name):
                 station = station[0]
             else:
                 station = prompt_value(
-                    header=list_header_printer(station, lambda s: s.name),
+                    header=list_printer(station, lambda s: s.name),
                     prompt=localization.ENTER_STATION_INDEX,
-                    input_parser=lambda a: list_input_parser(station, a),
+                    input_parser=lambda a: list_index_parser(station, a),
                     error_handler=localization.INVALID_STATION_INDEX.format(1, len(station))
                 )
         if station is not None:
@@ -285,14 +320,51 @@ def get_station_by_name(station_list, name):
     raise KeyError(name)
 
 
-def list_header_printer(item_list, item_repr=None, starting_index=1):
-    for index, item in enumerate(item_list):
+def list_printer(item_list, item_repr=None, starting_index=1):
+    if starting_index is None:
+        for item in item_list:
+            if item_repr is not None:
+                item = item_repr(item)
+            print(item)
+    else:
+        for index, item in enumerate(item_list):
+            if item_repr is not None:
+                item = item_repr(item)
+            print("{0}. {1}".format(index + starting_index, item))
+
+
+def list_value_parser(item_list, input_value, item_repr=None, case_sensitive=False, multi_separator=None):
+    def get_item_as_str(value):
         if item_repr is not None:
-            item = item_repr(item)
-        print("{0}. {1}".format(index + starting_index, item))
+            value = item_repr(value)
+        value = str(value)
+        if not case_sensitive:
+            value = value.upper()
+        return value
+
+    if not case_sensitive:
+        input_value = input_value.upper()
+
+    if multi_separator is None:
+        for item in item_list:
+            item_str = get_item_as_str(item)
+            if item_str == input_value:
+                return item
+        raise KeyError()
+    else:
+        results = []
+        check = input_value.split(multi_separator)
+        for item in item_list:
+            item_str = get_item_as_str(item)
+            if item_str in check:
+                results.append(item)
+                check.remove(item_str)
+        if len(results) > 0:
+            raise KeyError()
+        return results
 
 
-def list_input_parser(item_list, input_value, starting_index=1, multi_separator=None):
+def list_index_parser(item_list, input_value, starting_index=1, multi_separator=None):
     if multi_separator is None:
         index = int(input_value) - starting_index
         if index < 0:
@@ -342,7 +414,7 @@ def prompt_value(header=None, prompt=None, input_parser=None, error_handler=None
         except Exception as ex:
             if error_handler is not None:
                 if isinstance(error_handler, str):
-                    logger.error(ex)
+                    logger.error(repr(ex))
                     print(error_handler)
                 else:
                     error_handler(ex)
@@ -381,6 +453,9 @@ def load_config(config_path):
     try:
         with codecs.open(config_path, encoding="utf-8") as config_file:
             exec(config_file.read(), config)
+        return True
+    except FileNotFoundError:
+        print("No configuration file found, using default values.")
         return True
     except Exception as ex:
         print("Config file could not be loaded! " + repr(ex))
@@ -428,12 +503,22 @@ def setup():
         setup_localization(config.get("locale", "en_US"))
 
 
+def print_config():
+    print("-" * 33 + "Config values" + "-" * 33)
+    for key, value in config.items():
+        if key[:2] == key[-2:] == "__":
+            continue
+        print(key + ": " + repr(value))
+    print("-" * 79)
+
+
 def main():
     auto, success = setup()
     if not success:
         return
+    print_config()
     station_list = StationList()
-    login_manager = login(auto)
+    login_manager = login(auto, True)
     train_list = query(station_list, auto)
     train = train_selector(train_list, auto)
     purchase(login_manager, train, auto)

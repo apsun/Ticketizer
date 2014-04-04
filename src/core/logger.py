@@ -43,8 +43,9 @@ class LogType:
         "E": ERROR
     }
 
-# Setup color and stuff
 enabled_log_types = LogType.ALL
+print_log_type = True
+print_log_time = True
 
 __colors = {
     LogType.NONE: lambda s: None,
@@ -97,21 +98,16 @@ def log(log_type, msg):
     if (enabled_log_types & log_type) != log_type:
         return
 
-    # Whether to print the log verbosity
-    enable_type = True
-    # Whether to print the current time
-    enable_time = True
-    
-    if enable_type and enable_time:
+    if print_log_type and print_log_time:
         fmt_str = "[{0}][{1}] {2}"
-    elif enable_type:
+    elif print_log_type:
         fmt_str = "[{0}] {2}"
-    elif enable_time:
+    elif print_log_time:
         fmt_str = "[{1}] {2}"
     else:
         fmt_str = "{2}"
     
-    if enable_time:
+    if print_log_time:
         curr_time = datetime.now().strftime("%H:%M:%S")
     else:
         curr_time = None

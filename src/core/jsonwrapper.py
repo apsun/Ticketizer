@@ -57,7 +57,7 @@ class JsonDict(dict):
         assert isinstance(base, (RootJsonList, RootJsonDict))
         messages = base.get("messages")
         if messages is None or len(messages) == 0:
-            raise RequestError(None, base)
+            raise RequestError("Unknown error occured", base, base.response)
         elif len(messages) == 1:
             raise RequestError(messages[0], base, base.response)
         else:
@@ -73,6 +73,10 @@ class JsonDict(dict):
             if value == "N" or value == "false":
                 return False
         return False
+
+    def assert_true(self, item):
+        if not self.get_bool(item):
+            self.raise_error()
 
 
 class RootJsonList(JsonList):
@@ -91,7 +95,7 @@ class RootJsonDict(JsonDict):
 
 def read(response, check_status=True):
     if response.text == "-1":
-        raise RequestError("Invalid request parameters, did the 12306 API change?")
+        raise RequestError("Invalid request parameters, did the 12306 API change?", None, response)
     json = response.json()
     if isinstance(json, dict):
         return RootJsonDict(json, response, check_status)
