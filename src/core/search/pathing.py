@@ -19,9 +19,12 @@
 from datetime import datetime, timedelta
 from collections import OrderedDict
 from core import timeconverter, logger, webrequest
-from core.errors import StopPathSearch
 from core.search.search import TrainQuery, TicketPricing, TicketDirection
 from core.processing.containers import ValueRange, FlagSet
+
+
+class StopPathSearch(Exception):
+    pass
 
 
 class MultiTrainPath:

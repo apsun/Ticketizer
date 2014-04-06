@@ -18,8 +18,16 @@
 
 from core import logger, timeconverter, webrequest
 from core.enums import TicketPricing, TicketDirection
+from core.jsonwrapper import RequestError
 from core.data.train import Train
-from core.errors import RequestError, InvalidTicketDateError
+
+
+class SearchFailedError(Exception):
+    pass
+
+
+class InvalidTicketDateError(SearchFailedError):
+    pass
 
 
 class TrainQuery:

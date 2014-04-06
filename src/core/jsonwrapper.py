@@ -16,7 +16,10 @@
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
-from core.errors import RequestError
+
+class RequestError(Exception):
+    def __init__(self, msg, json, response):
+        super(RequestError, self).__init__(msg, json, response)
 
 
 class JsonList(list):

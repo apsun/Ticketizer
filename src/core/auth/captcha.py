@@ -18,7 +18,6 @@
 
 from requests.exceptions import HTTPError
 from core import logger, webrequest
-from core.errors import CaptchaUnsolvedError
 
 
 class CaptchaType:
@@ -37,8 +36,6 @@ class Captcha:
 
     @property
     def answer(self):
-        if self.__answer is None:
-            raise CaptchaUnsolvedError()
         return self.__answer
 
     @property

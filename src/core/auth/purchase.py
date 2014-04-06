@@ -18,22 +18,50 @@
 #
 # TODO: Return variables required to auto-open the purchase site
 # TODO: Implement purchasing of round-trip tickets
+# TODO: Add not-logged-in error
 
 import re
 import urllib.parse as urllib
 from core import timeconverter, webrequest, logger
 from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
-from core.errors import UnfinishedTransactionError, DataExpiredError, StopPurchaseQueue
-from core.errors import PurchaseFailedError, RequestError, InvalidOperationError
+from core.jsonwrapper import RequestError
 from core.auth.captcha import Captcha, CaptchaType
 from core.data.passenger import Passenger
 
 
+class StopPurchaseQueue(Exception):
+    pass
+
+
+class PurchaseFailedError(Exception):
+    pass
+
+
+class InvalidOperationError(Exception):
+    pass
+
+
+class UnfinishedTransactionError(PurchaseFailedError):
+    pass
+
+
+class DataExpiredError(PurchaseFailedError):
+    pass
+
+
+class NotEnoughTicketsError(PurchaseFailedError):
+    pass
+
+
+class NotLoggedInError(PurchaseFailedError):
+    pass
+
+
 class TicketPurchaser:
-    def __init__(self, cookies):
-        self.__cookies = cookies
+    def __init__(self, login_manager):
         self.__submit_token = None
         self.__purchase_key = None
+        self.__cookies = login_manager.cookies
         self.direction = TicketDirection.ONE_WAY
         self.pricing = TicketPricing.NORMAL
         self.train = None
@@ -168,15 +196,14 @@ class TicketPurchaser:
         url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
         data = self.__get_check_order_data(passenger_strs, captcha)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        if not json["data"].get_bool("submitStatus"):
-            raise PurchaseFailedError("Purchase failed @ check_order_info")
+        json["data"].assert_true("submitStatus")
 
     def __get_queue_count(self, passenger_dict):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount"
         data = self.__get_queue_count_data(passenger_dict)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         if json["data"].get_bool("op_2"):
-            raise PurchaseFailedError("Too many people in queue")
+            raise NotEnoughTicketsError()
         queue_length = int(json["data"]["countT"])
         if queue_length > 0:
             logger.debug("{0} people left in queue".format(queue_length))
@@ -185,15 +212,13 @@ class TicketPurchaser:
         url = "https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue"
         data = self.__get_confirm_purchase_data(passenger_strs, captcha)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        if not json["data"].get_bool("submitStatus"):
-            raise PurchaseFailedError("Purchase failed @ confirm_purchase")
+        json["data"].assert_true("submitStatus")
 
     def __get_queue_data(self):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime"
         params = self.__get_queue_time_params()
         json = webrequest.get_json(url, params=params, cookies=self.__cookies)
-        if not json["data"].get_bool("queryOrderWaitTimeStatus"):
-            raise PurchaseFailedError("Purchase failed @ get_queue_data")
+        json["data"].assert_true("queryOrderWaitTimeStatus")
         return json["data"]["waitCount"], json["data"].get("orderId")
 
     def __wait_for_queue(self, callback):
@@ -210,8 +235,7 @@ class TicketPurchaser:
         url = "https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue"
         data = self.__get_queue_result_data(order_id)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
-        if not json["data"].get_bool("submitStatus"):
-            raise PurchaseFailedError("Purchase failed @ get_queue_result")
+        json["data"].assert_true("submitStatus")
 
     def __ensure_order_submitted(self):
         if self.__submit_token is None:
@@ -263,7 +287,7 @@ class TicketPurchaser:
         # Note: If continue_purchase() throws an exception,
         # you must call begin_purchase() again!
         if not self.train.can_buy:
-            raise PurchaseFailedError("No tickets available for purchase")
+            raise InvalidOperationError("No tickets available for purchase")
         logger.debug("Purchasing tickets for train " + self.train.name)
         self.__submit_order_request()
         purchase_page = self.__get_purchase_page()

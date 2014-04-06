@@ -23,9 +23,10 @@ import argparse
 import importlib
 import webbrowser
 # import getpass
+
+# Oh dear god, it's dependency hell >_<
 from core import timeconverter, logger
 from core.logger import LogType
-from core.errors import *
 from core.enums import TrainType, TicketType, TicketStatus
 from core.processing.containers import ValueRange
 from core.processing.filter import TrainFilter
@@ -33,7 +34,11 @@ from core.processing.sort import TrainSorter, PriorityList
 from core.data.station import StationList
 from core.search.search import TicketSearcher, TrainQuery
 from core.auth.login import LoginManager
-
+from core.auth.login import InvalidUsernameError, InvalidPasswordError
+from core.auth.login import TooManyLoginAttemptsError, SystemMaintenanceError
+from core.auth.purchase import TicketPurchaser
+from core.auth.purchase import DataExpiredError, UnfinishedTransactionError, NotEnoughTicketsError, StopPurchaseQueue
+# Wow! We're still alive!
 
 class ConsoleCaptchaSolver:
     CAPTCHA_PATH = "captcha.jpg"
@@ -88,7 +93,7 @@ def solve_captcha(image_factory, solver_factory):
         solver.on_end()
 
 
-def create_train_filters():
+def create_train_filters(auto):
     filter_obj = TrainFilter()
     range_factory = ValueRange.from_tuple
 
@@ -107,6 +112,10 @@ def create_train_filters():
     # Whitelist and blacklist
     filter_obj.blacklist.add_range(config.get("train_blacklist") or [])
     filter_obj.whitelist.add_range(config.get("train_whitelist") or [])
+
+    # Filter unbuyable trains (always enabled for auto mode)
+    filter_obj.ticket_filter.filter_sold_out = auto or config.get("hide_sold_out", False)
+    filter_obj.ticket_filter.filter_not_yet_sold = auto or config.get("not_yet_sold", False)
 
     # Train type filter
     train_type = config.get("train_type_filter")
@@ -165,7 +174,7 @@ def create_train_query(station_list, auto):
     return query_obj
 
 
-def login(auto, retry, on_invalid_username=None, on_invalid_password=None):
+def login(auto, retry, on_invalid_username=None, on_invalid_password=None, on_too_many_attempts=None):
     def do_login(lm, un, pw, ca):
         try:
             lm.login(un, pw, ca)
@@ -185,6 +194,14 @@ def login(auto, retry, on_invalid_username=None, on_invalid_password=None):
             else:
                 on_invalid_password()
             return "password"
+        except TooManyLoginAttemptsError:
+            if on_too_many_attempts is None:
+                print(localization.TOO_MANY_LOGIN_ATTEMPTS)
+            elif isinstance(on_too_many_attempts, str):
+                print(on_too_many_attempts)
+            else:
+                on_too_many_attempts()
+            return "attempts"
         return None
 
     login_manager = LoginManager()
@@ -223,15 +240,28 @@ def login(auto, retry, on_invalid_username=None, on_invalid_password=None):
             # password = None
         elif error == "password":
             password = None
+        elif error == "attempts":
+            # Allow the user to change their account
+            username = password = None
 
 
-def query(station_list, auto):
+def query(station_list, auto, retry):
     searcher = TicketSearcher()
     searcher.query = create_train_query(station_list, auto)
-    searcher.filter = create_train_filters()
+    searcher.filter = create_train_filters(auto)
     searcher.sorter = create_train_sorters()
-    train_list = searcher.get_train_list()
-    return train_list
+    sleep_time = config.get("search_retry_rate", 1)
+    while True:
+        train_list = searcher.get_train_list()
+        if len(train_list) == 0:
+            if retry:
+                print(localization.NO_TRAINS_FOUND_RETRYING.format(sleep_time))
+                time.sleep(sleep_time)
+            else:
+                print(localization.NO_TRAINS_FOUND)
+                return None
+        else:
+            return train_list
 
 
 def purchase(login_manager, train_list, auto):
@@ -240,7 +270,7 @@ def purchase(login_manager, train_list, auto):
     except KeyboardInterrupt:
         return None
 
-    purchaser = login_manager.get_purchaser()
+    purchaser = TicketPurchaser(login_manager)
     purchaser.train = train
     try:
         purchaser.begin_purchase()
@@ -261,16 +291,16 @@ def purchase(login_manager, train_list, auto):
         selected_passenger_list = select_passengers(passenger_list, auto)
         selected_ticket_dict = select_tickets(selected_passenger_list, available_tickets, auto)
         captcha_answer = solve_captcha(purchaser.get_purchase_captcha, captcha_solver)
+        order_id = purchaser.continue_purchase(selected_ticket_dict, captcha_answer, purchase_queue_callback)
     except KeyboardInterrupt:
         return None
-    order_id = purchaser.continue_purchase(selected_ticket_dict, captcha_answer, purchase_queue_callback)
     if order_id is not None:
         print(localization.ORDER_COMPLETED.format(order_id))
     return order_id
 
 
 def purchase_queue_callback(queue_length):
-    sleep_time = config.get("queue_refresh_rate", 1000)
+    sleep_time = config.get("queue_refresh_rate", 1)
     try:
         print(localization.QUEUE_WAIT.format(queue_length))
         time.sleep(sleep_time)
@@ -293,7 +323,10 @@ def select_train(train_list, auto):
             day_delta_str
         )
 
-    # TODO: Add automation
+    if auto:
+        # Assuming the list is sorted from most relevant to least relevant
+        return train_list[0]
+
     return prompt_value(
         header=lambda: print_list(train_list, train_info_repr, None),
         prompt=localization.ENTER_TRAIN_NAME,
@@ -588,35 +621,54 @@ def print_config():
     print("-" * 79)
 
 
+def autobuy():
+    # Get station list
+    station_list = StationList()
+
+    # Login beforehand (just in case!)
+    try:
+        login_manager = login(True, True)
+    except SystemMaintenanceError:
+        print(localization.SYSTEM_OFFLINE)
+        return None
+    if login_manager is None:
+        # User cancelled login (KeyboardInterrupt)
+        return None
+
+    retry_search = config.get("search_retry", True)
+    while True:
+        # Search for train
+        train_list = query(station_list, True, retry_search)
+        if train_list is None:
+            # No trains found and retry is False
+            return None
+
+        # Purchase tickets
+        try:
+            return purchase(login_manager, train_list, True)
+        except DataExpiredError:
+            train_list = query(station_list, True)
+            return purchase(login_manager, train_list, True)
+        except NotEnoughTicketsError:
+            # Tickets ran out while we tried to purchase
+            # Just jump back to the beginning of the loop
+            # and try again.
+            pass
+
+
+def interactive():
+    pass
+
+
 def main():
     auto, success = setup()
     if not success:
         return
-    # print_config()
 
-    # Get stations
-    station_list = StationList()
-
-    # Get trains for stations
-    train_list = query(station_list, auto)
-
-    # Log in to account
-    try:
-        login_manager = login(auto, True)
-    except TooManyLoginAttemptsError:
-        print(localization.TOO_MANY_LOGIN_ATTEMPTS)
-    if login_manager is None:
-        print("Login canceled!")
-        return
-
-    # Purchase tickets
-    try:
-        order_id = purchase(login_manager, train_list, auto)
-    except DataExpiredError:
-        train_list = query(station_list, auto)
-        purchase(login_manager, train_list, auto)
-    if order_id is None:
-        print("Purchase interrupted!")
+    if auto:
+        autobuy()
+    else:
+        interactive()
 
 
 if __name__ == "__main__":
