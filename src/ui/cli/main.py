@@ -254,12 +254,12 @@ def purchase(login_manager, train_list, auto):
         # one time after refreshing the train data.
         raise
 
+    passenger_list = purchaser.get_passenger_list()
+    available_tickets = [t for t in train.tickets if t.status == TicketStatus.NORMAL]
+    captcha_solver = auto and config.get("captcha_solver") or ConsoleCaptchaSolver
     try:
-        passenger_list = purchaser.get_passenger_list()
         selected_passenger_list = select_passengers(passenger_list, auto)
-        available_tickets = [t for t in train.tickets if t.status == TicketStatus.NORMAL]
         selected_ticket_dict = select_tickets(selected_passenger_list, available_tickets, auto)
-        captcha_solver = auto and config.get("captcha_solver") or ConsoleCaptchaSolver
         captcha_answer = solve_captcha(purchaser.get_purchase_captcha, captcha_solver)
     except KeyboardInterrupt:
         return None
@@ -279,9 +279,23 @@ def purchase_queue_callback(queue_length):
 
 
 def select_train(train_list, auto):
+    def train_info_repr(train):
+        day_delta = train.arrival_time.day - train.departure_time.day
+        day_delta_str = "" if day_delta == 0 else \
+                        " (+1 day)" if day_delta == 1 else \
+                        " (+{0} days)".format(day_delta)
+        return "{0}\t{1}\t-> {2}\t{3} -> {4}{5}".format(
+            train.name.ljust(5),
+            train.departure_station.name.ljust(4),
+            train.destination_station.name.ljust(4),
+            train.departure_time.strftime("%H:%M"),
+            train.arrival_time.strftime("%H:%M"),
+            day_delta_str
+        )
+
     # TODO: Add automation
     return prompt_value(
-        header=lambda: print_list(train_list, starting_index=None),
+        header=lambda: print_list(train_list, train_info_repr, None),
         prompt=localization.ENTER_TRAIN_NAME,
         input_parser=lambda a: parse_list_value(train_list, a, lambda t: t.name),
         error_handler=localization.INVALID_TRAIN_NAME
@@ -300,8 +314,8 @@ def select_passengers(passenger_list, auto):
 
 def select_tickets(passenger_list, ticket_list, auto):
     # TODO: Add automation
-    print_list(ticket_list, lambda t: "{0} ({1} remaining)".format(
-        TicketType.FULL_NAME_LOOKUP[t.type], t.count
+    print_list(ticket_list, lambda t: "{0}\t({1}元, {2} remaining)".format(
+        TicketType.FULL_NAME_LOOKUP[t.type].ljust(4), t.price, t.count
     ))
     passenger_dict = {}
     for passenger in passenger_list:
@@ -335,20 +349,16 @@ def get_station_by_name(station_list, name):
     raise KeyError(name)
 
 
-def print_list(item_list, item_repr=None, starting_index=1):
+def print_list(item_list, item_repr=str, starting_index=1):
     if starting_index is None:
         for item in item_list:
-            if item_repr is not None:
-                item = item_repr(item)
-            print(item)
+            print(item_repr(item))
     else:
         for index, item in enumerate(item_list):
-            if item_repr is not None:
-                item = item_repr(item)
-            print("{0}. {1}".format(index + starting_index, item))
+            print("{0}. {1}".format(index + starting_index, item_repr(item)))
 
 
-def parse_list_value(item_list, input_value, item_repr=None, case_sensitive=False, multi_separator=None):
+def parse_list_value(item_list, input_value, item_repr=str, case_sensitive=False, multi_separator=None):
     # Parses a user-inputted value from a list and returns the
     # item after ensuring that it is a valid entry in the list.
     #
@@ -376,14 +386,16 @@ def parse_list_value(item_list, input_value, item_repr=None, case_sensitive=Fals
     #   can either be a string on which to split the user input,
     #   or None to specify that input should not be splitted.
     def get_item_as_str(value):
-        if item_repr is not None:
-            value = item_repr(value)
-        value = str(value)
+        value = str(item_repr(value))
         if not case_sensitive:
             value = value.upper()
         return value
 
     if not case_sensitive:
+        # Just uppercase the entire string, since splitting an 
+        # uppercase string should leave it uppercase, right? Note 
+        # that if the separator is a lowercase letter, this might 
+        # cause problems...
         input_value = input_value.upper()
 
     if multi_separator is None:

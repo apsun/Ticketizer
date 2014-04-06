@@ -1,4 +1,5 @@
 .idea/
 /src/*.*
+Ticketizer.iml
 config.py
 *.pyc

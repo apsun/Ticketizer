@@ -2,8 +2,8 @@
 
 ENTER_USERNAME = "Enter your username: "
 ENTER_PASSWORD = "Enter your password: "
-CAPTCHA_BEGIN = "Please answer the captcha. If you do not provide an " \
-                "answer, you will receive a new captcha image. You may " \
+CAPTCHA_BEGIN = "Please answer the captcha. To change the image, simply do " \
+                "not type anything and press ENTER directly. You may also" \
                 "enter CTRL-C to cancel the process."
 CAPTCHA_SAVED = "The captcha image has been saved at: {0}"
 ENTER_CAPTCHA = "Enter the 4 characters in the captcha image: "
