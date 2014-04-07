@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
+import re
 from datetime import datetime, timedelta
 from core import logger, timeconverter, webrequest
 from core.enums import TrainType, TicketType, TicketStatus
@@ -76,7 +77,7 @@ class Train:
         # an object should still be created for it.
         self.tickets = TicketList(self.__get_ticket_dict(query_data))
         # Set the ticket selling time
-        self.begin_selling_time = self.__get_begin_selling_time(self.tickets, query_data)
+        self.begin_selling_time = self.__get_begin_selling_time(self.tickets, train_data)
         # A flag to see whether we have already fetched ticket prices.
         self.ticket_prices_fetched = False
 
@@ -112,7 +113,8 @@ class Train:
         return tickets
 
     @staticmethod
-    def __get_begin_selling_time(tickets, query_data):
+    def __get_begin_selling_time(tickets, train_data):
+        query_data = train_data["queryLeftNewDTO"]
         # For some reason, different ticket categories can
         # begin selling at different times. Thus, even if we
         # can buy some tickets, some might still be unavailable.
@@ -130,11 +132,22 @@ class Train:
         if not not_yet_sold:
             return None
 
-        begin_date = query_data["control_train_day"]
-        # I sure hope this website doesn't last until 2030-03-03...
-        if begin_date == "20300303":
-            begin_date = datetime.now().date()
-        return timeconverter.str_to_datetime(begin_date, query_data["sale_time"], "%Y%m%d", "%H%M")
+        begin_time = timeconverter.str_to_time(query_data["sale_time"], "%H%M")
+        begin_date = datetime.now().date()
+
+        # Have to parse the button text to determine the sale date
+        button_html = train_data["buttonTextInfo"]
+        date_match = \
+            re.match("([0-9]+)月([0-9]+)日<br/>[0-9]+点起售", button_html) or \
+            re.match("暂售至<br/>([0-9]+)月([0-9]+)日", button_html)
+        if date_match is not None:
+            # Sale postponed to specified date
+            year = begin_date.year
+            month = int(date_match.group(1))
+            day = int(date_match.group(2))
+            begin_date = datetime(year=year, month=month, day=day)
+
+        return datetime.combine(begin_date, begin_time)
 
     def __get_price_query_params(self):
         return [
