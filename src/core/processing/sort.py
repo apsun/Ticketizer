@@ -17,38 +17,6 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 
-class PriorityList(dict):
-    def __init__(self, values):
-        super(PriorityList, self).__init__()
-        if isinstance(values, list):
-            for i, value in enumerate(values):
-                if not isinstance(value, str):
-                    raise TypeError()
-                self.setdefault(value, i)
-        elif isinstance(values, set):
-            for value in values:
-                if not isinstance(value, str):
-                    raise TypeError()
-                self[value] = 0
-        elif isinstance(values, tuple):
-            index = 0
-            for subvalues in values:
-                if not isinstance(subvalues, (set, list)):
-                    raise TypeError()
-                for value in subvalues:
-                    if not isinstance(value, str):
-                        raise TypeError()
-                    self.setdefault(value, index)
-                    if isinstance(subvalues, list):
-                        index += 1
-                index += 1
-        else:
-            raise TypeError()
-
-    def __getitem__(self, item):
-        return self.get(item, len(self))
-
-
 class TrainSorter:
     def __init__(self):
         self.favorites = None

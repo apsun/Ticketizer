@@ -216,6 +216,14 @@ class IdentificationType:
         PASSPORT:       "护照"
     }
 
+    REVERSE_TEXT_LOOKUP = {
+        "二代身份证": SECOND_GEN_ID,
+        "一代身份证": FIRST_GEN_ID,
+        "港澳通行证": HONGKONG_MACAU,
+        "台湾通行证": TAIWAN,
+        "护照":      PASSPORT
+    }
+
 
 class PassengerType:
     ADULT = "1"
@@ -230,6 +238,13 @@ class PassengerType:
         DISABLED: "残疾军人"
     }
 
+    REVERSE_TEXT_LOOKUP = {
+        "成人":    ADULT,
+        "儿童":    CHILD,
+        "学生":    STUDENT,
+        "残疾军人": DISABLED
+    }
+
 
 class Gender:
     MALE = "M"
@@ -238,4 +253,9 @@ class Gender:
     TEXT_LOOKUP = {
         MALE:   "男",
         FEMALE: "女"
+    }
+
+    REVERSE_TEXT_LOOKUP = {
+        "男": MALE,
+        "女": FEMALE
     }

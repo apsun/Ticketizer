@@ -21,7 +21,7 @@
 # TODO: Add not-logged-in error
 
 import re
-import urllib.parse as urllib
+import urllib.parse
 from core import timeconverter, webrequest, logger
 from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
 from core.jsonwrapper import RequestError
@@ -84,7 +84,7 @@ class TicketPurchaser:
             "query_to_station_name": self.train.destination_station.name,
             # Need to unescape this string or else it will become
             # double-escaped when we send the request.
-            "secretStr": urllib.unquote(self.train.data["secret_key"]),
+            "secretStr": urllib.parse.unquote(self.train.data["secret_key"]),
             "tour_flag": self.direction,
             "train_date": timeconverter.date_to_str(self.train.departure_time.date())
         }

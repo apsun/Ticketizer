@@ -92,7 +92,7 @@ class PathFinder:
             # Apparently you're not supposed to use the actual
             # train date here, not the date returned in the
             # train query data. And yes, they can be different.
-            ("depart_date", timeconverter.date_to_str(timeconverter.str_to_date(train.data["alt_date"], "%Y%m%d")))
+            ("depart_date", timeconverter.date_to_str(train.data["alt_date"].strftime("%Y%m%d")))
         ]
 
     @staticmethod

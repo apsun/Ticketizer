@@ -26,7 +26,7 @@ class SearchFailedError(Exception):
     pass
 
 
-class InvalidTicketDateError(SearchFailedError):
+class DateOutOfRangeError(SearchFailedError):
     pass
 
 
@@ -64,7 +64,7 @@ class TrainQuery:
             json_data = json["data"]
         except RequestError as ex:
             if ex.args[0] == "选择的查询日期不在预售日期范围内":
-                raise InvalidTicketDateError() from ex
+                raise DateOutOfRangeError() from ex
             raise
         logger.debug("Got train list from {0} to {1} on {2}".format(
             self.departure_station.name,
@@ -82,27 +82,4 @@ class TrainQuery:
             train = Train(train_data, departure_station, destination_station,
                           self.pricing, self.direction, self.date)
             train_list.append(train)
-        return train_list
-
-
-class TicketSearcher:
-    def __init__(self):
-        self.query = None
-        self.filter = None
-        self.sorter = None
-
-    def filter_by_train(self, train_list):
-        if self.filter is not None:
-            return self.filter.filter(train_list)
-        else:
-            return train_list
-
-    def sort_trains(self, train_list):
-        if self.sorter is not None:
-            self.sorter.sort(train_list)
-
-    def get_train_list(self):
-        train_list = self.query.execute()
-        train_list = self.filter_by_train(train_list)
-        self.sort_trains(train_list)
         return train_list

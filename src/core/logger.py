@@ -45,7 +45,7 @@ class LogType:
 
 enabled_log_types = LogType.ALL
 print_log_type = True
-print_log_time = True
+print_log_time = False
 
 __colors = {
     LogType.NONE: lambda s: None,

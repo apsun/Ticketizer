@@ -47,15 +47,3 @@ def time_to_str(time_obj, fmt="%H:%M"):
 
 def str_to_time(time_str, fmt="%H:%M"):
     return datetime.strptime(time_str, fmt).time()
-
-
-def timedelta_to_str(timedelta_obj, force_seconds=False):
-    minutes, seconds = divmod(timedelta_obj.total_seconds(), 60)
-    hours, minutes = divmod(minutes, 60)
-    hours = int(hours)
-    minutes = int(minutes)
-    seconds = int(seconds)
-    fmt = "{0:02d}:{1:02d}"
-    if force_seconds or seconds != 0:
-        fmt += "{2:02d}"
-    return fmt.format(hours, minutes, seconds)

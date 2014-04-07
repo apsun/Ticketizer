@@ -17,7 +17,7 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 import requests
-import urllib.parse as urllib
+import urllib.parse
 from core import logger, jsonwrapper
 from core.auth.cookies import SessionCookies
 
@@ -26,7 +26,7 @@ def request(method, url, **kwargs):
     log_network(method, url, **kwargs)
     params = kwargs.get("params")
     if isinstance(params, list):
-        url += "?" + urllib.urlencode(params)
+        url += "?" + urllib.parse.urlencode(params)
         kwargs["params"] = None
     response = requests.request(method, url, verify=False, **kwargs)
     response.raise_for_status()
