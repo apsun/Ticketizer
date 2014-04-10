@@ -17,7 +17,7 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, date, timedelta
 from core import logger, timeconverter, webrequest
 from core.enums import TrainType, TicketType, TicketStatus
 from core.data.ticket import Ticket, TicketList
@@ -145,7 +145,10 @@ class Train:
             year = begin_date.year
             month = int(date_match.group(1))
             day = int(date_match.group(2))
-            begin_date = datetime(year=year, month=month, day=day)
+            # Remember to consider cross-year delays!
+            if (month, day) < (begin_date.month, begin_date.day):
+                year += 1
+            begin_date = date(year=year, month=month, day=day)
 
         return datetime.combine(begin_date, begin_time)
 

@@ -382,6 +382,7 @@ def select_passengers(passenger_list, auto):
     def get_passengers_from_dict(passenger_dict):
         selected = []
         error = False
+        # TODO: Handle duplicates -- what if passenger is in multiple keys?
         for key in passenger_dict:
             if isinstance(key, str):
                 p = get_passenger_from_name(key)
