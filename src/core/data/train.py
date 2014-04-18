@@ -187,9 +187,10 @@ class Train:
         logger.debug("Fetched ticket prices for train " + self.name)
 
     def __repr__(self):
-        return "{0} (ID: {1}) from {2} to {3}".format(
+        return "{0} (ID: {1}) from {2} to {3} at {4}".format(
             self.name,
             self.id,
             self.departure_station.name,
-            self.destination_station.name
+            self.destination_station.name,
+            timeconverter.datetime_to_str(self.departure_time)
         )

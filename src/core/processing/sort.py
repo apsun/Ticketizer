@@ -20,53 +20,38 @@
 class TrainSorter:
     def __init__(self):
         self.favorites = None
-        self.sort_methods = []
+        self.sort_methods = None
 
     def sort(self, train_list):
-        if self.sort_methods is not None:
-            for sorter in self.sort_methods:
-                if isinstance(sorter, str):
-                    sorter = self.__sort_method_dispatch(sorter)
+        sort_methods = self.sort_methods
+        if sort_methods is not None:
+            for sorter in sort_methods:
                 sorter(train_list)
 
-        if self.favorites is not None:
-            train_list.sort(key=lambda x: self.favorites[x.name])
-
-    @classmethod
-    def __sort_method_dispatch(cls, method_name):
-        if method_name.startswith("!"):
-            method_name = method_name[1:]
-            reverse = True
-        else:
-            reverse = False
-        return lambda train_list: {
-            "name": cls.__sort_by_name,
-            "departure_time": cls.__sort_by_departure_time,
-            "arrival_time": cls.__sort_by_arrival_time,
-            "duration": cls.__sort_by_duration,
-            "price": cls.__sort_by_price
-        }[method_name](train_list, reverse)
+        favorites = self.favorites
+        if favorites is not None:
+            train_list.sort(key=lambda x: favorites.get(x.name, len(favorites)))
 
     @staticmethod
-    def __sort_by_name(train_list, reverse):
+    def sort_by_name(train_list, reverse):
         type_stripper = lambda x: x.name[1:] if str.isalpha(x.name[0]) else x.name
         train_list.sort(key=lambda x: int(type_stripper(x)), reverse=reverse)
         train_list.sort(key=lambda x: x.type, reverse=reverse)
 
     @staticmethod
-    def __sort_by_departure_time(train_list, reverse):
+    def sort_by_departure_time(train_list, reverse):
         train_list.sort(key=lambda x: x.departure_time, reverse=reverse)
 
     @staticmethod
-    def __sort_by_arrival_time(train_list, reverse):
+    def sort_by_arrival_time(train_list, reverse):
         train_list.sort(key=lambda x: x.arrival_time, reverse=reverse)
 
     @staticmethod
-    def __sort_by_duration(train_list, reverse):
+    def sort_by_duration(train_list, reverse):
         train_list.sort(key=lambda x: x.duration, reverse=reverse)
 
     @staticmethod
-    def __sort_by_price(train_list, reverse):
+    def sort_by_price(train_list, reverse):
         # No idea why anyone would want to sort by maximum price, but whatever...
         # This method intelligently uses the min/max price of the train's tickets.
         # That means that doing an ascending sort and reversing is NOT the same as

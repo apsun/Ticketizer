@@ -42,6 +42,7 @@ ALL_TRAINS_FILTERED = "{0} trains were found, but all were blocked " \
 NO_TRAINS_FOUND = "No trains were found between these two stations!"
 RETRYING_SEARCH = "Searching again in {0} secs."
 ORDER_COMPLETED = "Order completed! Order ID: {0}"
+ORDER_INTERRUPTED = "Order interrupted! Please check your order ID manually!"
 ENTER_TRANSFER_TIME = "Enter the {0} transfer time (format: HH:MM): "
 MINIMUM = "minimum"
 MAXIMUM = "maximum"

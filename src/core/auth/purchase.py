@@ -58,10 +58,10 @@ class NotLoggedInError(PurchaseFailedError):
 
 
 class TicketPurchaser:
-    def __init__(self, login_manager):
+    def __init__(self, cookies):
         self.__submit_token = None
         self.__purchase_key = None
-        self.__cookies = login_manager.cookies
+        self.__cookies = cookies
         self.direction = TicketDirection.ONE_WAY
         self.pricing = TicketPricing.NORMAL
         self.train = None

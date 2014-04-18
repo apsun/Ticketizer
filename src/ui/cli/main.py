@@ -27,13 +27,13 @@ import datetime
 
 # Oh dear god, it's dependency hell >_<
 from core import timeconverter, logger
-from core.data.passenger import Passenger
 from core.logger import LogType
 from core.enums import TrainType, TicketType, TicketStatus, PassengerType, IdentificationType, Gender
-from core.processing.containers import ValueRange, PriorityList
+from core.processing.containers import ValueRange
 from core.processing.filter import TrainFilter
 from core.processing.sort import TrainSorter
 from core.data.station import StationList
+from core.data.passenger import Passenger
 from core.search.search import TrainQuery, DateOutOfRangeError
 from core.auth.login import LoginManager
 from core.auth.login import InvalidUsernameError, InvalidPasswordError
@@ -44,313 +44,96 @@ from core.auth.purchase import NotEnoughTicketsError, StopPurchaseQueue
 # Wow! We're still alive!
 
 
-class ConsoleCaptchaSolver:
-    CAPTCHA_PATH = "captcha.jpg"
-
-    @staticmethod
-    def on_begin():
-        print(localization.CAPTCHA_BEGIN)
-
-    @classmethod
-    def on_new_image(cls, image_data):
-        path = os.path.abspath(cls.CAPTCHA_PATH)
-        with open(path, "wb") as f:
-            f.write(image_data)
-        print(localization.CAPTCHA_SAVED.format(path))
-        webbrowser.open(path)
-
-    @staticmethod
-    def request_input():
-        answer = input(localization.ENTER_CAPTCHA)
-        test_answer = answer.upper()
-        if test_answer == "":
-            answer = None
-        return answer
-
-    @staticmethod
-    def on_invalid_answer():
-        print(localization.INCORRECT_CAPTCHA)
-
-    @classmethod
-    def on_end(cls):
-        os.remove(os.path.abspath(cls.CAPTCHA_PATH))
-
-
-def solve_captcha(image_factory, solver_factory):
-    solver = solver_factory()
-    solver.on_begin()
+# ------------------------------Helper functions------------------------------
+def solve_captcha(captcha_factory):
+    captcha_path = os.path.abspath(config.get("captcha_path", "captcha.jpg"))
+    print(localization.CAPTCHA_BEGIN)
     try:
         while True:
-            captcha_image = image_factory()
-            solver.on_new_image(captcha_image.image_data)
+            # We fetch the captcha image in this outer loop
+            captcha = captcha_factory()
+            with open(captcha_path, "wb") as f:
+                f.write(captcha.image_data)
+            print(localization.CAPTCHA_SAVED.format(captcha_path))
+            webbrowser.open(captcha_path)
             while True:
-                answer = solver.request_input()
-                if answer is not None:
-                    success = captcha_image.check_answer(answer)
-                    if success:
-                        return captcha_image
-                    else:
-                        solver.on_invalid_answer()
+                # Loop for solving the captcha
+                # Break out of this to request a new image
+                answer = input(localization.ENTER_CAPTCHA)
+                if answer == "":
+                    # Accept empty input as sentinel value
+                    # to fetch a new image
+                    break
+                if captcha.submit_answer(answer):
+                    return captcha
                 else:
-                    break
+                    print(localization.INCORRECT_CAPTCHA)
     finally:
-        solver.on_end()
+        os.remove(captcha_path)
 
 
-def login(auto, retry):
-    def do_login(lm, un, pw, ca):
-        try:
-            lm.login(un, pw, ca)
-        except InvalidUsernameError:
-            print(localization.INCORRECT_USERNAME)
-            return "username"
-        except InvalidPasswordError:
-            print(localization.INCORRECT_USERNAME)
-            return "password"
-        except TooManyLoginAttemptsError:
-            print(localization.TOO_MANY_LOGIN_ATTEMPTS)
-            return "attempts"
-        return None
-
-    login_manager = LoginManager()
-    captcha_solver = auto and config.get("captcha_solver", ConsoleCaptchaSolver)
-    if auto:
-        username = config.get("username")
-        password = config.get("password")
-    else:
-        username = None
-        password = None
-
-    while True:
-        try:
-            if username is None:
-                username = input(localization.ENTER_USERNAME)
-            if password is None:
-                password = input(localization.ENTER_PASSWORD)
-                # Weird issue with the IntelliJ console and getpass,
-                # So we fall back to input() for now.
-                # password = getpass.getpass(localization.ENTER_PASSWORD)
-            captcha_answer = solve_captcha(login_manager.get_login_captcha, captcha_solver)
-        except KeyboardInterrupt:
-            # User interrupted login info entry process
-            return None
-        error = do_login(login_manager, username, password, captcha_answer)
-        if error is None:
-            # Everything went ok!
-            config["username"] = username
-            config["password"] = password
-            return login_manager
-        if not retry:
-            # Retrying disabled; do not proceed.
-            return None
-        if error == "username":
-            # Invalid username
-            username = None
-            del config["username"]
-        elif error == "password":
-            # Invalid password
-            password = None
-            del config["password"]
-        elif error == "attempts":
-            # Too many login attempts
-            username = password = None
-
-
-def create_train_filters(auto):
-    filter_obj = TrainFilter()
-    range_factory = ValueRange.from_tuple
-
-    # Train range filters
-    train_range = config.get("train_range_filters")
-    if train_range is not None:
-        filter_obj.departure_time_range = range_factory(train_range.get("departure_time"), timeconverter.str_to_time)
-        filter_obj.arrival_time_range = range_factory(train_range.get("arrival_time"), float)
-        filter_obj.duration_range = range_factory(train_range.get("duration_range"), float)
-
-    # Ticket range filters
-    ticket_range = config.get("ticket_range_filters")
-    if ticket_range is not None:
-        filter_obj.ticket_filter.price_range = range_factory(ticket_range.get("price_range"), float)
-
-    # Whitelist and blacklist
-    filter_obj.blacklist.add_range(config.get("train_blacklist", ()))
-    filter_obj.whitelist.add_range(config.get("train_whitelist", ()))
-
-    # Filter unbuyable trains (always enabled for auto mode)
-    filter_obj.ticket_filter.filter_sold_out = auto or config.get("hide_sold_out", False)
-    filter_obj.ticket_filter.filter_not_yet_sold = auto or config.get("not_yet_sold", False)
-
-    # Train type filter
-    train_type = config.get("train_type_filter")
-    if train_type is not None:
-        enabled_types = filter_obj.enabled_types
-        enabled_types.clear()
-        for type_string in train_type:
-            if type_string == "?":
-                type_value = TrainType.OTHER
+def get_station_by_name(station_list, name):
+    methods = (station_list.id_lookup,
+               station_list.abbreviation_lookup,
+               station_list.name_lookup,
+               station_list.pinyin_lookup)
+    for method in methods:
+        station = method.get(name)
+        if isinstance(station, list):
+            if len(station) == 1:
+                # Directly choose if there is only one available item
+                station = station[0]
             else:
-                type_value = TrainType.REVERSE_ABBREVIATION_LOOKUP[type_string]
-            enabled_types.add(type_value)
-
-    # Ticket type filter
-    ticket_type = config.get("ticket_type_filter")
-    if ticket_type is not None:
-        enabled_types = filter_obj.ticket_filter.enabled_types
-        enabled_types.clear()
-        for type_string in ticket_type:
-            type_value = TicketType.REVERSE_FULL_NAME_LOOKUP[type_string]
-            enabled_types.add(type_value)
-
-    return filter_obj
+                station = prompt_value(
+                    header=print_list(station, lambda s: s.name),
+                    prompt=localization.ENTER_STATION_INDEX,
+                    input_parser=lambda a: parse_list_index(station, a),
+                    error_handler=localization.INVALID_STATION_INDEX.format(1, len(station))
+                )
+        if station is not None:
+            return station
+    raise KeyError(name)
 
 
-def create_train_sorters():
-    sorter_obj = TrainSorter()
-    sorter_obj.sort_methods = config.get("train_sorters")
-    sorter_obj.favorites = PriorityList(config.get("favorite_trains", ()))
-    return sorter_obj
+def select_train_date(auto):
+    invalid_date_printer = lambda ex: localization.INVALID_DATE.format(
+        timeconverter.date_to_str(datetime.datetime.now())
+    )
+
+    return prompt_value_use_config(
+        prompt=localization.ENTER_DATE,
+        input_parser=timeconverter.str_to_date,
+        error_handler=invalid_date_printer,
+        config_key=auto and "date"
+    )
 
 
-def create_train_query(station_list, auto):
-    def get_date_obj(config_key):
-        date = prompt_value_use_config(
-            prompt=localization.ENTER_DATE,
-            input_parser=timeconverter.str_to_date,
-            error_handler=localization.INVALID_DATE.format(timeconverter.date_to_str(datetime.datetime.now())),
-            config_key=auto and config_key
-        )
-        config[config_key] = timeconverter.date_to_str(date)
-        return date
-
-    def get_station_obj(config_key, name):
-        station = prompt_value_use_config(
-            prompt=localization.ENTER_STATION_NAME.format(name),
-            input_parser=lambda a: get_station_by_name(station_list, a),
-            error_handler=localization.INVALID_STATION_NAME,
-            config_key=auto and config_key
-        )
-        config[config_key] = station.name
-        return station
-
-    query_obj = TrainQuery(station_list)
-    query_obj.date = get_date_obj("date")
-    query_obj.departure_station = get_station_obj("departure_station", localization.DEPARTURE)
-    query_obj.destination_station = get_station_obj("destination_station", localization.DESTINATION)
-    query_obj.exact_departure_station = config.get("exact_departure_station", False)
-    query_obj.exact_destination_station = config.get("exact_destination_station", False)
-    return query_obj
+def select_departure_station(station_list, auto):
+    return prompt_value_use_config(
+        prompt=localization.ENTER_STATION_NAME.format(localization.DEPARTURE),
+        input_parser=lambda a: get_station_by_name(station_list, a),
+        error_handler=localization.INVALID_STATION_NAME,
+        config_key=auto and "departure_station"
+    )
 
 
-def query(station_list, auto, retry):
-    cfg_query = create_train_query(station_list, auto)
-    cfg_filter = create_train_filters(auto)
-    cfg_sorter = create_train_sorters()
-    custom_filter = config.get("custom_filter", lambda tl: None)
-    custom_sorter = config.get("custom_sorter", lambda tl: None)
-    sleep_time = config.get("search_retry_rate", 1)
-    while True:
-        try:
-            train_list = cfg_query.execute()
-        except DateOutOfRangeError:
-            print(localization.DATE_OUT_OF_RANGE.format(cfg_query.date))
-            del config["date"]
-            cfg_query = create_train_query(station_list, auto)
-            continue
-        original_count = len(train_list)
-        train_list = cfg_filter.filter(train_list)
-        custom_filter(train_list)
-        filtered_count = len(train_list)
-        if filtered_count == 0:
-            if original_count > 0:
-                print(localization.ALL_TRAINS_FILTERED.format(original_count))
-                if retry:
-                    print(localization.RETRYING_SEARCH.format(sleep_time))
-                    try:
-                        time.sleep(sleep_time)
-                    except KeyboardInterrupt:
-                        return None
-            else:
-                print(localization.NO_TRAINS_FOUND)
-                return None
-        else:
-            cfg_sorter.sort(train_list)
-            custom_sorter(train_list)
-            return train_list
-
-
-def purchase(login_manager, train_list, auto):
-    try:
-        train = select_train(train_list, auto)
-    except KeyboardInterrupt:
-        return None
-
-    purchaser = TicketPurchaser(login_manager)
-    purchaser.train = train
-    try:
-        purchaser.begin_purchase()
-    except UnfinishedTransactionError:
-        print(localization.UNFINISHED_TRANSACTIONS)
-        return None
-    except DataExpiredError:
-        # This means the user waited too long between
-        # querying train data and submitting the order.
-        # Caller should catch this exception and re-try
-        # one time after refreshing the train data.
-        raise
-
-    passenger_list = get_passenger_list(purchaser)
-    available_tickets = [t for t in train.tickets if t.status == TicketStatus.NORMAL]
-    captcha_solver = auto and config.get("captcha_solver", ConsoleCaptchaSolver)
-    try:
-        selected_passenger_list = select_passengers(passenger_list, auto)
-        selected_ticket_dict = select_tickets(selected_passenger_list, available_tickets, auto)
-        captcha_answer = solve_captcha(purchaser.get_purchase_captcha, captcha_solver)
-        order_id = purchaser.continue_purchase(selected_ticket_dict, captcha_answer, purchase_queue_callback)
-    except KeyboardInterrupt:
-        return None
-    if order_id is not None:
-        print(localization.ORDER_COMPLETED.format(order_id))
-    return order_id
-
-
-def get_passenger_list(purchaser):
-    passenger_list = purchaser.get_passenger_list()
-    extra_passengers = config.get("custom_passengers")
-    if extra_passengers is not None:
-        for key, value in extra_passengers.items():
-            passenger = Passenger()
-            passenger.name = key
-            passenger.gender = Gender.REVERSE_TEXT_LOOKUP[value["gender"]]
-            passenger.id_type = IdentificationType.REVERSE_TEXT_LOOKUP[value["id_type"]]
-            passenger.id_number = value["id_number"]
-            passenger.type = PassengerType.REVERSE_TEXT_LOOKUP[value["type"]]
-            passenger.phone_number = value["phone_number"]
-            for i, existing_passenger in enumerate(passenger_list):
-                if existing_passenger.name == key:
-                    if existing_passenger != passenger:
-                        passenger_list[i] = passenger
-                        print(localization.OVERWROTE_PASSENGER.format(key))
-                    break
-            else:
-                passenger_list.append(passenger)
-    return passenger_list
-
-
-def purchase_queue_callback(queue_length):
-    sleep_time = config.get("queue_refresh_rate", 1)
-    try:
-        print(localization.QUEUE_WAIT.format(queue_length))
-        time.sleep(sleep_time)
-    except KeyboardInterrupt:
-        raise StopPurchaseQueue()
+def select_destination_station(station_list, auto):
+    return prompt_value_use_config(
+        prompt=localization.ENTER_STATION_NAME.format(localization.DESTINATION),
+        input_parser=lambda a: get_station_by_name(station_list, a),
+        error_handler=localization.INVALID_STATION_NAME,
+        config_key=auto and "destination_station"
+    )
 
 
 def select_train(train_list, auto):
     def train_info_repr(train):
         day_delta = train.arrival_time.day - train.departure_time.day
-        day_delta_str = "" if day_delta == 0 else \
-                        " (+1 day)" if day_delta == 1 else \
-                        " (+{0} days)".format(day_delta)
+        day_delta_str = (
+            "" if day_delta == 0 else
+            " (+1 day)" if day_delta == 1 else
+            " (+{0} days)".format(day_delta)
+        )
         return "{0}\t{1}\t-> {2}\t{3} -> {4}{5}".format(
             train.name.ljust(5),
             train.departure_station.name.ljust(4),
@@ -373,40 +156,30 @@ def select_train(train_list, auto):
 
 
 def select_passengers(passenger_list, auto):
-    def get_passenger_from_name(name):
-        for p in passenger_list:
-            if p.name == name:
-                return p
-        return None
+    def unique_append(container_list, seen_set, key, value):
+        if key in seen_set:
+            raise KeyError("Duplicate passenger entry: {0}".format(key))
+        container_list.append(value)
+        seen_set.add(key)
 
-    def get_passengers_from_dict(passenger_dict):
-        selected = []
-        error = False
-        # TODO: Handle duplicates -- what if passenger is in multiple keys?
-        for key in passenger_dict:
+    def get_passengers_from_dict(selected, name_map):
+        selected_passengers = []
+        seen = set()
+        for key in selected:
             if isinstance(key, str):
-                p = get_passenger_from_name(key)
-                if p is None:
-                    print(localization.PASSENGER_DOES_NOT_EXIST.format(key))
-                    error = True
-                else:
-                    selected.append(p)
+                unique_append(selected_passengers, seen, key, name_map[key])
             else:
                 # Assuming the key is a tuple
                 for subkey in key:
-                    p = get_passenger_from_name(subkey)
-                    if p is None:
-                        print(localization.PASSENGER_DOES_NOT_EXIST.format(subkey))
-                        error = True
-                    else:
-                        selected.append(p)
-        if error:
-            return None
-        return selected
+                    if not isinstance(subkey, str):
+                        raise TypeError("Invalid passenger key: {0}".format(subkey))
+                    unique_append(selected_passengers, seen, subkey, name_map[subkey])
+        return selected_passengers
 
     cfg_passengers = config.get("passengers")
     if auto and cfg_passengers is not None:
-        passengers = get_passengers_from_dict(cfg_passengers)
+        passenger_dict = {p.name: p for p in passenger_list}
+        passengers = get_passengers_from_dict(cfg_passengers, passenger_dict)
         if passengers is not None:
             return passengers
         else:
@@ -437,29 +210,148 @@ def select_tickets(passenger_list, ticket_list, auto):
     return passenger_dict
 
 
-def get_station_by_name(station_list, name):
-    methods = (station_list.id_lookup,
-               station_list.abbreviation_lookup,
-               station_list.name_lookup,
-               station_list.pinyin_lookup)
-    for method in methods:
-        station = method.get(name)
-        if isinstance(station, list):
-            if len(station) == 1:
-                # Directly choose if there is only one available item
-                station = station[0]
+def create_train_filters():
+    filter_obj = TrainFilter()
+    range_factory = ValueRange.from_tuple
+
+    # Train range filters
+    train_range = config.get("train_range_filters")
+    if train_range is not None:
+        filter_obj.departure_time_range = range_factory(train_range.get("departure_time"), timeconverter.str_to_time)
+        filter_obj.arrival_time_range = range_factory(train_range.get("arrival_time"), float)
+        filter_obj.duration_range = range_factory(train_range.get("duration_range"), float)
+
+    # Ticket range filters
+    ticket_range = config.get("ticket_range_filters")
+    if ticket_range is not None:
+        filter_obj.ticket_filter.price_range = range_factory(ticket_range.get("price_range"), float)
+
+    # Whitelist and blacklist
+    train_blacklist = config.get("train_blacklist")
+    train_whitelist = config.get("train_whitelist")
+    if train_blacklist is not None:
+        filter_obj.blacklist.add_range(train_blacklist)
+    if train_whitelist is not None:
+        filter_obj.whitelist.add_range(train_whitelist)
+
+    # Filter unbuyable trains
+    filter_obj.ticket_filter.filter_sold_out = config.get("hide_sold_out", False)
+    filter_obj.ticket_filter.filter_not_yet_sold = config.get("not_yet_sold", False)
+
+    # Train type filter
+    train_type = config.get("train_type_filter")
+    if train_type is not None:
+        enabled_types = filter_obj.enabled_types
+        enabled_types.clear()
+        for type_string in train_type:
+            if type_string == "?":
+                type_value = TrainType.OTHER
             else:
-                station = prompt_value(
-                    header=print_list(station, lambda s: s.name),
-                    prompt=localization.ENTER_STATION_INDEX,
-                    input_parser=lambda a: parse_list_index(station, a),
-                    error_handler=localization.INVALID_STATION_INDEX.format(1, len(station))
-                )
-        if station is not None:
-            return station
-    raise KeyError(name)
+                type_value = TrainType.REVERSE_ABBREVIATION_LOOKUP[type_string]
+            enabled_types.add(type_value)
+
+    # Ticket type filter
+    ticket_type = config.get("ticket_type_filter")
+    if ticket_type is not None:
+        enabled_types = filter_obj.ticket_filter.enabled_types
+        enabled_types.clear()
+        for type_string in ticket_type:
+            type_value = TicketType.REVERSE_FULL_NAME_LOOKUP[type_string]
+            enabled_types.add(type_value)
+
+    return filter_obj
 
 
+def create_train_sorters():
+    sorter_obj = TrainSorter()
+
+    # Train sorters
+    train_sorters = config.get("train_sorters")
+    if train_sorters is not None:
+        sort_funcs = []
+        sort_func_map = {
+            "name": TrainSorter.sort_by_name,
+            "departure_time": TrainSorter.sort_by_departure_time,
+            "arrival_time": TrainSorter.sort_by_arrival_time,
+            "duration": TrainSorter.sort_by_duration,
+            "price": TrainSorter.sort_by_price
+        }
+
+        for sorter_name in train_sorters:
+            if sorter_name.startswith("!"):
+                sorter_name = sorter_name[1:]
+                reverse = True
+            else:
+                reverse = False
+            sort_func = sort_func_map[sorter_name]
+            wrapped_sort = lambda train_list: sort_func(train_list, reverse)
+            sort_funcs.append(wrapped_sort)
+        sorter_obj.sort_methods = sort_funcs
+
+    # Favorite trains
+    favorite_trains = config.get("favorite_trains")
+    if favorite_trains is not None:
+        favorite_map = {}
+
+        if isinstance(favorite_trains, set):
+            # Unordered favorites
+            for value in favorite_trains:
+                if not isinstance(value, str):
+                    raise TypeError()
+                # Every value gets 0, no need to worry about duplicates
+                favorite_map[value] = 0
+        else:
+            # Ordered favorites
+            for i, value in enumerate(favorite_trains):
+                if isinstance(value, set):
+                    # Unordered group in overall ordered list
+                    for subvalue in value:
+                        if not isinstance(subvalue, str):
+                            raise TypeError()
+                        # Each value in subgroup gets the same priority
+                        favorite_map.setdefault(subvalue, i)
+                elif not isinstance(value, str):
+                    raise TypeError()
+                favorite_map.setdefault(value, i)
+
+        sorter_obj.favorites = favorite_map
+
+    return sorter_obj
+
+
+def get_passenger_list(purchaser):
+    passenger_list = purchaser.get_passenger_list()
+    custom_passengers = config.get("custom_passengers")
+    if custom_passengers is not None:
+        for key, value in custom_passengers.items():
+            passenger = Passenger()
+            passenger.name = key
+            passenger.gender = Gender.REVERSE_TEXT_LOOKUP[value["gender"]]
+            passenger.id_type = IdentificationType.REVERSE_TEXT_LOOKUP[value["id_type"]]
+            passenger.id_number = value["id_number"]
+            passenger.type = PassengerType.REVERSE_TEXT_LOOKUP[value["type"]]
+            passenger.phone_number = value["phone_number"]
+            for i, existing_passenger in enumerate(passenger_list):
+                if existing_passenger.name == key:
+                    if existing_passenger != passenger:
+                        passenger_list[i] = passenger
+                        print(localization.OVERWROTE_PASSENGER.format(key))
+                    break
+            else:
+                passenger_list.append(passenger)
+    return passenger_list
+
+
+def purchase_queue_callback(queue_length):
+    sleep_time = config.get("queue_refresh_rate", 1)
+    try:
+        print(localization.QUEUE_WAIT.format(queue_length))
+        time.sleep(sleep_time)
+    except KeyboardInterrupt:
+        raise StopPurchaseQueue()
+
+
+# -----------------------------Generic utilities------------------------------
 def print_list(item_list, item_repr=str, starting_index=1):
     if starting_index is None:
         for item in item_list:
@@ -557,6 +449,8 @@ def parse_list_index(item_list, input_value, starting_index=1, multi_separator=N
         return item_list[index]
     else:
         input_value = input_value.split(multi_separator)
+        if len(input_value) == 0:
+            raise ValueError()
         items = []
         # Technically we could use OrderedDict for this
         seen_indices = set()
@@ -570,7 +464,7 @@ def parse_list_index(item_list, input_value, starting_index=1, multi_separator=N
         return items
 
 
-def print_or_call(handler, ex=None):
+def print_or_call(handler, ex):
     if handler is None:
         # No error handler defined, allow exception to bubble
         return False
@@ -652,6 +546,7 @@ def prompt_value_use_config(header=None, prompt=None, input_parser=None, error_h
     return prompt_value(header=header, prompt=prompt, input_parser=input_parser, error_handler=error_handler)
 
 
+# -------------------------------One-time setup-------------------------------
 def load_config(config_path):
     global config
     config = {}
@@ -718,18 +613,138 @@ def print_config():
     print("-" * 79)
 
 
+# -------------------------------Core functions-------------------------------
+def login(retry, auto):
+    captcha_solver = auto and config.get("captcha_solver", solve_captcha)
+    if auto:
+        username = config.get("username")
+        password = config.get("password")
+    else:
+        username = None
+        password = None
+
+    login_manager = LoginManager()
+    while True:
+        if username is None:
+            username = input(localization.ENTER_USERNAME)
+        if password is None:
+            password = input(localization.ENTER_PASSWORD)
+            # Weird issue with the IntelliJ console and getpass,
+            # So we fall back to input() for now.
+            # password = getpass.getpass(localization.ENTER_PASSWORD)
+        captcha_answer = captcha_solver(login_manager.get_login_captcha)
+        try:
+            login_manager.login(username, password, captcha_answer)
+        except InvalidUsernameError:
+            username = None
+            print(localization.INCORRECT_USERNAME)
+        except InvalidPasswordError:
+            password = None
+            print(localization.INCORRECT_PASSWORD)
+        except TooManyLoginAttemptsError:
+            username = password = None
+        else:
+            config["username"] = username
+            config["password"] = password
+            return login_manager
+        if not retry:
+            return None
+
+
+def query(station_list, retry, auto):
+    # Construct query object
+    query_obj = TrainQuery(station_list)
+    query_obj.date = select_train_date(auto)
+    query_obj.departure_station = select_departure_station(station_list, auto)
+    query_obj.destination_station = select_destination_station(station_list, auto)
+    query_obj.exact_departure_station = config.get("exact_departure_station", False)
+    query_obj.exact_destination_station = config.get("exact_destination_station", False)
+
+    filter_obj = create_train_filters()
+    sorter_obj = create_train_sorters()
+    custom_filter = config.get("custom_filter")
+    custom_sorter = config.get("custom_sorter")
+    sleep_time = config.get("search_retry_rate", 1)
+
+    while True:
+        try:
+            # Get raw train list
+            train_list = query_obj.execute()
+        except DateOutOfRangeError:
+            # Invalid date provided, prompt the user for a new one
+            print(localization.DATE_OUT_OF_RANGE.format(timeconverter.date_to_str(query_obj.date)))
+            # Forcibly disable auto mode, to avoid re-using an
+            # invalid date again
+            query_obj.date = select_train_date(False)
+            continue
+
+        # Now we filter the resulting list
+        original_count = len(train_list)
+        train_list = filter_obj.filter(train_list)
+        if custom_filter is not None:
+            custom_filter(train_list)
+        filtered_count = len(train_list)
+
+        # Make sure there's at least one train
+        if filtered_count == 0:
+            if original_count > 0:
+                print(localization.ALL_TRAINS_FILTERED.format(original_count))
+                if retry:
+                    print(localization.RETRYING_SEARCH.format(sleep_time))
+                    time.sleep(sleep_time)
+                    continue
+                else:
+                    return None
+            else:
+                print(localization.NO_TRAINS_FOUND)
+                return None
+
+        # After filtering the trains, we sort the list
+        sorter_obj.sort(train_list)
+        if custom_sorter is not None:
+            custom_sorter(train_list)
+
+        return train_list
+
+
+def purchase(login_manager, train, auto):
+    purchaser = TicketPurchaser(login_manager.cookies)
+    purchaser.train = train
+    purchaser.begin_purchase()
+
+    # Get passengers
+    passenger_list = get_passenger_list(purchaser)
+    selected_passenger_list = select_passengers(passenger_list, auto)
+
+    # Select tickets
+    available_tickets = [t for t in train.tickets if t.status == TicketStatus.NORMAL]
+    selected_tickets = select_tickets(selected_passenger_list, available_tickets, auto)
+
+    # Solver captcha
+    captcha_solver = auto and config.get("captcha_solver", solve_captcha)
+    captcha_answer = captcha_solver(purchaser.get_purchase_captcha)
+
+    # Submit the order
+    order_id = purchaser.continue_purchase(selected_tickets, captcha_answer, purchase_queue_callback)
+    if order_id is not None:
+        print(localization.ORDER_COMPLETED.format(order_id))
+    else:
+        print(localization.ORDER_INTERRUPTED)
+    return order_id
+
+
+# ----------------------------------Main UI-----------------------------------
 def autobuy():
     # Get station list
     station_list = StationList()
 
     # Login beforehand (just in case!)
+    # TODO: Allow multiple logins
     try:
-        login_manager = login(auto=True, retry=True)
+        login_manager = login(True, auto=True)
     except SystemMaintenanceError:
+        # Stupid website goes offline every night for "maintenance".
         print(localization.SYSTEM_OFFLINE)
-        return None
-    if login_manager is None:
-        # User cancelled login (KeyboardInterrupt)
         return None
 
     retry_search = config.get("search_retry", True)
@@ -742,10 +757,19 @@ def autobuy():
 
         # Purchase tickets
         try:
-            return purchase(login_manager, train_list, auto=True)
+            train = select_train(train_list, auto=True)
+            return purchase(login_manager, train, auto=True)
+        except UnfinishedTransactionError:
+            # TODO: Change an account if possible?
+            print(localization.UNFINISHED_TRANSACTIONS)
+            return None
         except DataExpiredError:
-            train_list = query(station_list, True)
-            return purchase(login_manager, train_list, auto=True)
+            # This means the user waited too long between
+            # querying train data and submitting the order.
+            # We simply re-query the train list and try again.
+            train_list = query(station_list, retry_search, auto=True)
+            train = select_train(train_list, auto=True)
+            return purchase(login_manager, train, auto=True)
         except NotEnoughTicketsError:
             # Tickets ran out while we tried to purchase
             # Just jump back to the beginning of the loop

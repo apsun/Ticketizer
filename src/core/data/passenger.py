@@ -50,7 +50,7 @@ class Passenger:
         return hash(self.name)
 
     def __repr__(self):
-        return "{0} (gender: {1}, type: {2}, ID: {3}->{4})".format(
+        return "{0} (gender: {1}, type: {2}, ID: <{3}> {4})".format(
             self.name,
             self.gender,
             PassengerType.TEXT_LOOKUP[self.type],

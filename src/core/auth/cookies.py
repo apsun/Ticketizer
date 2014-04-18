@@ -20,6 +20,14 @@ from core import logger
 
 
 class SessionCookies(dict):
+    @property
+    def session_id(self):
+        return self["JSESSIONID"]
+
+    @property
+    def server_ip(self):
+        return self["BIGipServerotn"]
+
     @classmethod
     def __handle_cookie_changed(cls, name, value):
         return {

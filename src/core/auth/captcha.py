@@ -82,7 +82,7 @@ class Captcha:
         assert content_type == "image/jpeg"
         return response.content
 
-    def check_answer(self, answer):
+    def submit_answer(self, answer):
         url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"
         data = self.__get_captcha_check_data(answer)
         try:
@@ -90,6 +90,8 @@ class Captcha:
             success = json.get_bool("data")
         except HTTPError as ex:
             if ex.response.status_code == 406:
+                # 406 means the request was okay, but the
+                # server said our answer's format was invalid
                 success = False
             else:
                 raise
