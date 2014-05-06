@@ -18,39 +18,43 @@
 
 import requests
 import urllib.parse
+from requests.exceptions import HTTPError
 from core import logger, jsonwrapper
 from core.auth.cookies import SessionCookies
 
 
 def request(method, url, **kwargs):
-    log_network(method, url, **kwargs)
+    def generate_log():
+        log_values = ["[{0}] {1}".format(method.upper(), url)]
+        for arg, value in kwargs.items():
+            if value is None:
+                continue
+            try:
+                if len(value) == 0:
+                    continue
+                if isinstance(value, dict):
+                    value = value.items()
+                value = "".join(map(lambda x: "\n   -> {0}: {1}".format(*x), value))
+            except TypeError:
+                pass
+            log_values.append(" -> {0}: {1}".format(arg, value))
+        return "\n".join(log_values)
+
+    logger.network(generate_log)
     params = kwargs.get("params")
     if isinstance(params, list):
         url += "?" + urllib.parse.urlencode(params)
         kwargs["params"] = None
     response = requests.request(method, url, verify=False, **kwargs)
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except HTTPError as ex:
+        logger.network("HTTPError occured: {0}", ex.args[0])
+        raise
     cookies = kwargs.get("cookies")
     if isinstance(cookies, SessionCookies):
         cookies.update_cookies(response)
     return response
-
-
-def log_network(method, url, **kwargs):
-    log_values = ["[{0}] {1}".format(method.upper(), url)]
-    for arg, value in kwargs.items():
-        if value is None:
-            continue
-        try:
-            if len(value) == 0:
-                continue
-            if isinstance(value, dict):
-                value = value.items()
-            value = "".join(map(lambda x: "\n   -> {0}: {1}".format(*x), value))
-        except TypeError:
-            pass
-        log_values.append(" -> {0}: {1}".format(arg, value))
-    logger.network("\n".join(log_values))
 
 
 def get(url, **kwargs):

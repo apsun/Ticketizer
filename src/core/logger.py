@@ -94,40 +94,37 @@ def write(log_type, msg):
     __streams[log_type].write(msg + os.linesep)
 
 
-def log(log_type, msg):
+def log(log_type, msg, *args, **kwargs):
     if (enabled_log_types & log_type) != log_type:
         return
 
-    if print_log_type and print_log_time:
-        fmt_str = "[{0}][{1}] {2}"
-    elif print_log_type:
-        fmt_str = "[{0}] {2}"
-    elif print_log_time:
-        fmt_str = "[{1}] {2}"
-    else:
-        fmt_str = "{2}"
-    
+    # Generate log header
+    header = ""
+    if print_log_type:
+        header += "[" + LogType.NAME_LOOKUP[log_type] + "]"
     if print_log_time:
-        curr_time = datetime.now().strftime("%H:%M:%S")
-    else:
-        curr_time = None
+        header += "[" + datetime.now().strftime("%H:%M:%S") + "]"
+
+    # Lazy evaluate log message for performance reasons
+    if callable(msg):
+        msg = msg()
 
     set_color(log_type)
-    write(log_type, fmt_str.format(LogType.NAME_LOOKUP[log_type], curr_time, msg))
+    write(log_type, header + " " + msg.format(*args, **kwargs))
     reset_color(log_type)
 
 
-def error(msg):
-    log(LogType.ERROR, msg)
+def error(msg, *args, **kwargs):
+    log(LogType.ERROR, msg, *args, **kwargs)
 
     
-def warning(msg):
-    log(LogType.WARNING, msg)
+def warning(msg, *args, **kwargs):
+    log(LogType.WARNING, msg, *args, **kwargs)
 
 
-def network(msg):
-    log(LogType.NETWORK, msg)
+def network(msg, *args, **kwargs):
+    log(LogType.NETWORK, msg, *args, **kwargs)
 
 
-def debug(msg):
-    log(LogType.DEBUG, msg)
+def debug(msg, *args, **kwargs):
+    log(LogType.DEBUG, msg, *args, **kwargs)

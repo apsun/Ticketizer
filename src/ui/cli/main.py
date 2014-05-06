@@ -28,6 +28,7 @@ import datetime
 # Oh dear god, it's dependency hell >_<
 from core import timeconverter, logger
 from core.logger import LogType
+from core.auth import captcha
 from core.enums import TrainType, TicketType, TicketStatus, PassengerType, IdentificationType, Gender
 from core.processing.containers import ValueRange
 from core.processing.filter import TrainFilter
@@ -45,32 +46,6 @@ from core.auth.purchase import NotEnoughTicketsError, StopPurchaseQueue
 
 
 # ------------------------------Helper functions------------------------------
-def solve_captcha(captcha_factory):
-    captcha_path = os.path.abspath(config.get("captcha_path", "captcha.jpg"))
-    print(localization.CAPTCHA_BEGIN)
-    try:
-        while True:
-            # We fetch the captcha image in this outer loop
-            captcha = captcha_factory()
-            with open(captcha_path, "wb") as f:
-                f.write(captcha.image_data)
-            print(localization.CAPTCHA_SAVED.format(captcha_path))
-            webbrowser.open(captcha_path)
-            while True:
-                # Loop for solving the captcha
-                # Break out of this to request a new image
-                answer = input(localization.ENTER_CAPTCHA)
-                if answer == "":
-                    # Accept empty input as sentinel value
-                    # to fetch a new image
-                    break
-                if captcha.submit_answer(answer):
-                    return captcha
-                else:
-                    print(localization.INCORRECT_CAPTCHA)
-    finally:
-        os.remove(captcha_path)
-
 
 def get_station_by_name(station_list, name):
     methods = (station_list.id_lookup,
@@ -562,7 +537,8 @@ def load_config(config_path):
         return False
 
 
-def setup_localization(language_id):
+def setup_localization():
+    language_id = config.get("locale", "en_US")
     global localization
     try:
         localization = importlib.import_module("ui.cli.localization." + language_id)
@@ -600,7 +576,7 @@ def setup():
     return args["auto"], \
         setup_log_verbosity(args["verbosity"] or "we") and \
         load_config(args["config"] or "config.py") and \
-        setup_localization(config.get("locale", "en_US"))
+        setup_localization()
 
 
 def print_config():
@@ -613,9 +589,39 @@ def print_config():
     print("-" * 79)
 
 
+def register_captcha_solver():
+    captcha_path = os.path.abspath(config.get("captcha_path", "captcha.jpg"))
+
+    def on_begin():
+        print(localization.CAPTCHA_BEGIN)
+
+    def on_new_image(image_data):
+        with open(captcha_path, "wb") as f:
+            f.write(image_data)
+        print(localization.CAPTCHA_SAVED.format(captcha_path))
+        webbrowser.open(captcha_path)
+
+    def on_input_answer():
+        answer = input(localization.ENTER_CAPTCHA)
+        if answer == "":
+            return None
+        return answer
+
+    def on_incorrect_answer():
+        print(localization.INCORRECT_CAPTCHA)
+
+    def on_end():
+        os.remove(captcha_path)
+
+    captcha.on_begin = on_begin
+    captcha.on_new_image = on_new_image
+    captcha.on_input_answer = on_input_answer
+    captcha.on_incorrect_answer = on_incorrect_answer
+    captcha.on_end = on_end
+
+
 # -------------------------------Core functions-------------------------------
 def login(retry, auto):
-    captcha_solver = auto and config.get("captcha_solver", solve_captcha)
     if auto:
         username = config.get("username")
         password = config.get("password")
@@ -632,9 +638,8 @@ def login(retry, auto):
             # Weird issue with the IntelliJ console and getpass,
             # So we fall back to input() for now.
             # password = getpass.getpass(localization.ENTER_PASSWORD)
-        captcha_answer = captcha_solver(login_manager.get_login_captcha)
         try:
-            login_manager.login(username, password, captcha_answer)
+            login_manager.login(username, password)
         except InvalidUsernameError:
             username = None
             print(localization.INCORRECT_USERNAME)
@@ -710,7 +715,6 @@ def query(station_list, retry, auto):
 def purchase(login_manager, train, auto):
     purchaser = TicketPurchaser(login_manager.cookies)
     purchaser.train = train
-    purchaser.begin_purchase()
 
     # Get passengers
     passenger_list = get_passenger_list(purchaser)
@@ -720,12 +724,8 @@ def purchase(login_manager, train, auto):
     available_tickets = [t for t in train.tickets if t.status == TicketStatus.NORMAL]
     selected_tickets = select_tickets(selected_passenger_list, available_tickets, auto)
 
-    # Solver captcha
-    captcha_solver = auto and config.get("captcha_solver", solve_captcha)
-    captcha_answer = captcha_solver(purchaser.get_purchase_captcha)
-
     # Submit the order
-    order_id = purchaser.continue_purchase(selected_tickets, captcha_answer, purchase_queue_callback)
+    order_id = purchaser.execute(selected_tickets, purchase_queue_callback)
     if order_id is not None:
         print(localization.ORDER_COMPLETED.format(order_id))
     else:
@@ -785,6 +785,7 @@ def main():
     auto, success = setup()
     if not success:
         return
+    register_captcha_solver()
 
     if auto:
         autobuy()

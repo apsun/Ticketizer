@@ -30,6 +30,14 @@ class DateOutOfRangeError(SearchFailedError):
     pass
 
 
+def find_by_name(train_name, train_date):
+    pass
+
+
+def find_by_station(departure_station, destination_station, train_date):
+    pass
+
+
 class TrainQuery:
     def __init__(self, station_list):
         # Station list, required for train initialization

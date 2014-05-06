@@ -17,9 +17,9 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 from core import logger, webrequest
+from core.auth import captcha
 from core.jsonwrapper import RequestError
 from core.auth.cookies import SessionCookies
-from core.auth.captcha import CaptchaType, Captcha
 
 
 class LoginFailedError(Exception):
@@ -59,8 +59,9 @@ class LoginManager:
         json = webrequest.post_json(url, cookies=self.cookies)
         return json["data"].get_bool("flag")
 
-    def login(self, username, password, captcha):
-        data = self.__get_login_params(username, password, captcha.answer)
+    def login(self, username, password):
+        captcha_answer = captcha.solve_login_captcha(self.cookies)
+        data = self.__get_login_params(username, password, captcha_answer)
         url = "https://kyfw.12306.cn/otn/login/loginAysnSuggest"
         try:
             json = webrequest.post_json(url, data=data, cookies=self.cookies)
@@ -81,6 +82,3 @@ class LoginManager:
     def logout(self):
         webrequest.get("https://kyfw.12306.cn/otn/login/loginOut", cookies=self.cookies, allow_redirects=False)
         logger.debug("Successfully logged out")
-
-    def get_login_captcha(self):
-        return Captcha(CaptchaType.LOGIN, self.cookies)

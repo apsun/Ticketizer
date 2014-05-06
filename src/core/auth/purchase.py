@@ -23,9 +23,9 @@
 import re
 import urllib.parse
 from core import timeconverter, webrequest, logger
+from core.auth import captcha
 from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
 from core.jsonwrapper import RequestError
-from core.auth.captcha import Captcha, CaptchaType
 from core.data.passenger import Passenger
 
 
@@ -59,22 +59,10 @@ class NotLoggedInError(PurchaseFailedError):
 
 class TicketPurchaser:
     def __init__(self, cookies):
-        self.__submit_token = None
-        self.__purchase_key = None
         self.__cookies = cookies
         self.direction = TicketDirection.ONE_WAY
         self.pricing = TicketPricing.NORMAL
         self.train = None
-
-    def __get_captcha_check_params(self):
-        return {
-            "REPEAT_SUBMIT_TOKEN": self.__submit_token
-        }
-
-    def __get_passenger_query_data(self):
-        return {
-            "REPEAT_SUBMIT_TOKEN": self.__submit_token
-        }
 
     def __get_purchase_submit_data(self):
         return {
@@ -89,23 +77,23 @@ class TicketPurchaser:
             "train_date": timeconverter.date_to_str(self.train.departure_time.date())
         }
 
-    def __get_check_order_data(self, passenger_strs, captcha):
+    def __get_check_order_data(self, passenger_strs, submit_token, captcha_answer):
         old_pass_str, new_pass_str = passenger_strs
         return {
-            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
+            "REPEAT_SUBMIT_TOKEN": submit_token,
             "bed_level_order_num": "000000000000000000000000000000",
             "cancel_flag": "2",
             "oldPassengerStr": old_pass_str,
             "passengerTicketStr": new_pass_str,
-            "randCode": captcha.answer,
+            "randCode": captcha_answer,
             "tour_flag": self.direction
         }
 
-    def __get_queue_count_data(self, passenger_strs):
+    def __get_queue_count_data(self, passenger_strs, submit_token):
         date_str = self.train.departure_time.date().strftime(
             "%a %b %d %Y 00:00:00 GMT+0800 (China Standard Time)")
         return {
-            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
+            "REPEAT_SUBMIT_TOKEN": submit_token,
             "fromStationTelecode": self.train.departure_station.id,
             "toStationTelecode": self.train.destination_station.id,
             "leftTicket": self.train.data["ticket_count"],
@@ -118,28 +106,29 @@ class TicketPurchaser:
             "train_date": date_str
         }
 
-    def __get_confirm_purchase_data(self, passenger_strs, captcha):
+    def __get_confirm_purchase_data(self, passenger_strs, submit_token, purchase_key, captcha_answer):
         old_pass_str, new_pass_str = passenger_strs
         return {
-            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
-            "key_check_isChange": self.__purchase_key,
+            "REPEAT_SUBMIT_TOKEN": submit_token,
+            "key_check_isChange": purchase_key,
             "train_location": self.train.data["location_code"],
             "leftTicketStr": self.train.data["ticket_count"],
             "purpose_codes": TicketPricing.PURCHASE_LOOKUP[self.train.pricing],
             "oldPassengerStr": old_pass_str,
             "passengerTicketStr": new_pass_str,
-            "randCode": captcha.answer
+            "randCode": captcha_answer
         }
 
-    def __get_queue_time_params(self):
+    def __get_queue_time_params(self, submit_token):
         return {
-            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
+            "REPEAT_SUBMIT_TOKEN": submit_token,
             "tourFlag": self.direction
         }
 
-    def __get_queue_result_data(self, order_id):
+    @staticmethod
+    def __get_queue_result_data(submit_token, order_id):
         return {
-            "REPEAT_SUBMIT_TOKEN": self.__submit_token,
+            "REPEAT_SUBMIT_TOKEN": submit_token,
             "orderSequence_no": order_id
         }
 
@@ -192,15 +181,15 @@ class TicketPurchaser:
                 raise DataExpiredError() from ex
             raise
 
-    def __check_order_info(self, passenger_strs, captcha):
+    def __check_order_info(self, passenger_strs, submit_token, captcha_answer):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/checkOrderInfo"
-        data = self.__get_check_order_data(passenger_strs, captcha)
+        data = self.__get_check_order_data(passenger_strs, submit_token, captcha_answer)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         json["data"].assert_true("submitStatus")
 
-    def __get_queue_count(self, passenger_dict):
+    def __get_queue_count(self, passenger_dict, submit_token):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/getQueueCount"
-        data = self.__get_queue_count_data(passenger_dict)
+        data = self.__get_queue_count_data(passenger_dict, submit_token)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         if json["data"].get_bool("op_2"):
             raise NotEnoughTicketsError()
@@ -208,38 +197,36 @@ class TicketPurchaser:
         if queue_length > 0:
             logger.debug("{0} people left in queue".format(queue_length))
 
-    def __confirm_purchase(self, passenger_strs, captcha):
+    def __confirm_purchase(self, passenger_strs, submit_token, purchase_key, captcha_answer):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/confirmSingleForQueue"
-        data = self.__get_confirm_purchase_data(passenger_strs, captcha)
+        data = self.__get_confirm_purchase_data(passenger_strs, submit_token, purchase_key, captcha_answer)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         json["data"].assert_true("submitStatus")
 
-    def __get_queue_data(self):
+    def __get_queue_data(self, submit_token):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/queryOrderWaitTime"
-        params = self.__get_queue_time_params()
+        params = self.__get_queue_time_params(submit_token)
         json = webrequest.get_json(url, params=params, cookies=self.__cookies)
         json["data"].assert_true("queryOrderWaitTimeStatus")
         return json["data"]["waitCount"], json["data"].get("orderId")
 
-    def __wait_for_queue(self, callback):
+    def __wait_for_queue(self, submit_token, callback):
         while True:
-            length, order_id = self.__get_queue_data()
+            length, order_id = self.__get_queue_data(submit_token)
             if length == 0 and order_id is not None:
                 return order_id
-            try:
-                callback(length)
-            except StopPurchaseQueue:
-                return None
+            callback(length)
 
-    def __get_queue_result(self, order_id):
+    def __get_queue_result(self, submit_token, order_id):
         url = "https://kyfw.12306.cn/otn/confirmPassenger/resultOrderForDcQueue"
-        data = self.__get_queue_result_data(order_id)
+        data = self.__get_queue_result_data(submit_token, order_id)
         json = webrequest.post_json(url, data=data, cookies=self.__cookies)
         json["data"].assert_true("submitStatus")
 
-    def __ensure_order_submitted(self):
-        if self.__submit_token is None:
-            raise InvalidOperationError("Order has not been submitted yet")
+    def __get_order_id(self, submit_token, callback):
+        order_id = self.__wait_for_queue(submit_token, callback)
+        self.__get_queue_result(submit_token, order_id)
+        return order_id
 
     @staticmethod
     def __ensure_tickets_valid(passenger_dict):
@@ -249,63 +236,36 @@ class TicketPurchaser:
             if ticket.status != TicketStatus.NORMAL:
                 raise InvalidOperationError("Invalid ticket selection")
 
-    def get_purchase_captcha(self):
-        self.__ensure_order_submitted()
-        check_params = self.__get_captcha_check_params()
-        return Captcha(CaptchaType.PURCHASE, self.__cookies, check_params=check_params)
-
     def get_passenger_list(self):
-        self.__ensure_order_submitted()
         url = "https://kyfw.12306.cn/otn/confirmPassenger/getPassengerDTOs"
-        data = self.__get_passenger_query_data()
-        json = webrequest.post_json(url, data=data, cookies=self.__cookies)
+        json = webrequest.post_json(url, cookies=self.__cookies)
         passenger_data_list = json["data"]["normal_passengers"]
         logger.debug("Fetched passenger list ({0} passengers)".format(len(passenger_data_list)))
         return [Passenger(data) for data in passenger_data_list]
 
-    def begin_purchase(self):
-        # Due to the design of the 12306 API, we have to submit the
-        # purchase before getting the captcha. To avoid having to use
-        # a callback pattern to solve the captcha, the purchase process
-        # is split into 2 steps.
-
-        # How to use this API in a nutshell:
-        # 1. Submit the order
-        #    -> begin_purchase()
-        # 2. Get the captcha and passenger list
-        #    -> get_purchase_captcha() and get_passenger_list()
-        # 3. Solve the captcha and select passengers
-        #    -> (this part is for the client to implement)
-        # 4. Complete the order
-        #    -> continue_purchase(passenger_dict, captcha, queue_callback)
-        #       -> passenger_dict: maps passengers to tickets
-        #       -> captcha: a solved captcha object
-        #       -> queue_callback: a function that is called while waiting 
-        #             in the ticket queue, takes the length of the queue as 
-        #             a parameter and should return when ready to check again
-
-        # Note: If continue_purchase() throws an exception,
-        # you must call begin_purchase() again!
+    def execute(self, passengers, queue_callback):
         if not self.train.can_buy:
             raise InvalidOperationError("No tickets available for purchase")
-        logger.debug("Purchasing tickets for train " + self.train.name)
-        self.__submit_order_request()
-        purchase_page = self.__get_purchase_page()
-        self.__submit_token = self.__get_submit_token(purchase_page)
-        self.__purchase_key = self.__get_purchase_key(purchase_page)
+        self.__ensure_tickets_valid(passengers)
+        passenger_strs = self.__get_passenger_strs(passengers)
 
-    def continue_purchase(self, passenger_dict, captcha, queue_callback):
-        self.__ensure_order_submitted()
-        try:
-            self.__ensure_tickets_valid(passenger_dict)
-            passenger_strs = self.__get_passenger_strs(passenger_dict)
-            self.__check_order_info(passenger_strs, captcha)
-            self.__get_queue_count(passenger_strs)
-            self.__confirm_purchase(passenger_strs, captcha)
-            order_id = self.__wait_for_queue(queue_callback)
-            if order_id is not None:
-                self.__get_queue_result(order_id)
-            return order_id
-        finally:
-            self.__submit_token = None
-            self.__purchase_key = None
+        logger.debug("Purchasing tickets for train " + self.train.name)
+
+        # Begin purchase
+        self.__submit_order_request()
+
+        # Parse page for tokens
+        purchase_page = self.__get_purchase_page()
+        submit_token = self.__get_submit_token(purchase_page)
+        purchase_key = self.__get_purchase_key(purchase_page)
+
+        # Solve purchase captcha
+        captcha_answer = captcha.solve_purchase_captcha(self.__cookies)
+
+        # Confirm purchase
+        self.__check_order_info(passenger_strs, submit_token, captcha_answer)
+        self.__get_queue_count(passenger_strs, submit_token)
+        self.__confirm_purchase(passenger_strs, submit_token, purchase_key, captcha_answer)
+
+        order_id = self.__get_order_id(submit_token, queue_callback)
+        return order_id
