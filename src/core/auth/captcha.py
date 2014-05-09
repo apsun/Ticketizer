@@ -15,6 +15,9 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
+#
+# TODO: Improve API for GUI callers
+
 import threading
 from core import webrequest
 from core.webrequest import HTTPError

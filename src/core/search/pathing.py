@@ -19,7 +19,7 @@
 from datetime import datetime, timedelta
 from collections import OrderedDict
 from core import timeconverter, logger, webrequest
-from core.search.search import TrainQuery, TicketPricing, TicketDirection
+from core.search.search import TrainQuery, TicketPricing
 from core.processing.containers import ValueRange, FlagSet
 
 
@@ -247,7 +247,6 @@ class PathFinder:
     def get_path(self, train):
         query = TrainQuery(self.__station_list)
         query.pricing = self.pricing
-        query.direction = TicketDirection.ONE_WAY
         substations = self.__get_substations(train)
         try:
             return self.__get_path_recursive([train], substations, query, True)

@@ -24,7 +24,7 @@ from core.data.ticket import Ticket, TicketList
 
 
 class Train:
-    def __init__(self, train_data, departure_station, destination_station, pricing, direction, train_date):
+    def __init__(self, train_data, departure_station, destination_station, pricing, train_date):
         query_data = train_data["queryLeftNewDTO"]
         # The user-friendly name of the train (e.g. T546)
         self.name = query_data["station_train_code"]
@@ -38,8 +38,6 @@ class Train:
         self.destination_station = destination_station
         # The ticket pricing (normal/student) used when searching for this train
         self.pricing = pricing
-        # The train direction (one-way/round-trip) used when searching for this train
-        self.direction = direction
         # The departure time of the train (datetime.datetime)
         # The date must be passed in from the query because 12306
         # has a bug where the incorrect date is returned in the data.

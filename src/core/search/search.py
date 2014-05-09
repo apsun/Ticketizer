@@ -17,7 +17,7 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 from core import logger, timeconverter, webrequest
-from core.enums import TicketPricing, TicketDirection
+from core.enums import TicketPricing
 from core.jsonwrapper import RequestError
 from core.data.train import Train
 
@@ -30,22 +30,12 @@ class DateOutOfRangeError(SearchFailedError):
     pass
 
 
-def find_by_name(train_name, train_date):
-    pass
-
-
-def find_by_station(departure_station, destination_station, train_date):
-    pass
-
-
 class TrainQuery:
     def __init__(self, station_list):
         # Station list, required for train initialization
         self.__station_list = station_list
         # The type of ticket pricing -- normal ("adult") or student
         self.pricing = TicketPricing.NORMAL
-        # The trip type -- one-direction or round-trip
-        self.direction = TicketDirection.ONE_WAY
         # The departure date -- datetime.date
         self.date = None
         # The departure station -- data.Station
@@ -87,7 +77,6 @@ class TrainQuery:
                 continue
             if self.exact_destination_station and destination_station != self.destination_station:
                 continue
-            train = Train(train_data, departure_station, destination_station,
-                          self.pricing, self.direction, self.date)
+            train = Train(train_data, departure_station, destination_station, self.pricing, self.date)
             train_list.append(train)
         return train_list

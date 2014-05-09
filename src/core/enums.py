@@ -27,22 +27,6 @@ class TrainType:
     G = 32
     ALL = 63
 
-    FULL_NAME_LOOKUP = {
-        K: "快速",
-        T: "特快",
-        Z: "直达",
-        D: "动车",
-        G: "高铁"
-    }
-
-    ABBREVIATION_LOOKUP = {
-        K: "K",
-        T: "T",
-        Z: "Z",
-        D: "D",
-        G: "G"
-    }
-
     REVERSE_ABBREVIATION_LOOKUP = {
         "K": K,
         "T": T,
@@ -93,20 +77,6 @@ class TicketType:
         "一等座":   FIRST_CLASS,
         "特等座":   SPECIAL,
         "商务座":   BUSINESS
-    }
-
-    ABBREVIATION_LOOKUP = {
-        OTHER:            "qt",
-        NO_SEAT:          "wz",
-        HARD_SEAT:        "yz",
-        SOFT_SEAT:        "rz",
-        HARD_SLEEPER:     "yw",
-        SOFT_SLEEPER:     "rw",
-        SOFT_SLEEPER_PRO: "gr",
-        SECOND_CLASS:     "ze",
-        FIRST_CLASS:      "zy",
-        SPECIAL:          "tz",
-        BUSINESS:         "swz"
     }
 
     REVERSE_ABBREVIATION_LOOKUP = {
@@ -194,11 +164,6 @@ class TicketPricing:
         NORMAL: "00",
         STUDENT: "0X00"
     }
-
-
-class TicketDirection:
-    ONE_WAY = "dc"
-    ROUND_TRIP = "fc"
 
 
 class IdentificationType:

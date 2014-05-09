@@ -17,14 +17,13 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 #
 # TODO: Return variables required to auto-open the purchase site
-# TODO: Implement purchasing of round-trip tickets
 # TODO: Add not-logged-in error
 
 import re
 import urllib.parse
 from core import timeconverter, webrequest, logger
 from core.auth import captcha
-from core.enums import TicketPricing, TicketDirection, TicketType, TicketStatus
+from core.enums import TicketPricing, TicketType, TicketStatus
 from core.jsonwrapper import RequestError
 from core.data.passenger import Passenger
 
@@ -60,24 +59,24 @@ class NotLoggedInError(PurchaseFailedError):
 class TicketPurchaser:
     def __init__(self, cookies):
         self.__cookies = cookies
-        self.direction = TicketDirection.ONE_WAY
         self.pricing = TicketPricing.NORMAL
         self.train = None
 
     def __get_purchase_submit_data(self):
         return {
-            "back_train_date": timeconverter.date_to_str(self.train.departure_time.date()),  # TODO: Implement
+            "back_train_date": timeconverter.date_to_str(self.train.departure_time.date()),
             "purpose_codes": TicketPricing.PURCHASE_LOOKUP[self.pricing],
             "query_from_station_name": self.train.departure_station.name,
             "query_to_station_name": self.train.destination_station.name,
             # Need to unescape this string or else it will become
             # double-escaped when we send the request.
             "secretStr": urllib.parse.unquote(self.train.data["secret_key"]),
-            "tour_flag": self.direction,
+            "tour_flag": "dc",
             "train_date": timeconverter.date_to_str(self.train.departure_time.date())
         }
 
-    def __get_check_order_data(self, passenger_strs, submit_token, captcha_answer):
+    @staticmethod
+    def __get_check_order_data(passenger_strs, submit_token, captcha_answer):
         old_pass_str, new_pass_str = passenger_strs
         return {
             "REPEAT_SUBMIT_TOKEN": submit_token,
@@ -86,7 +85,7 @@ class TicketPurchaser:
             "oldPassengerStr": old_pass_str,
             "passengerTicketStr": new_pass_str,
             "randCode": captcha_answer,
-            "tour_flag": self.direction
+            "tour_flag": "dc"
         }
 
     def __get_queue_count_data(self, passenger_strs, submit_token):
@@ -119,10 +118,11 @@ class TicketPurchaser:
             "randCode": captcha_answer
         }
 
-    def __get_queue_time_params(self, submit_token):
+    @staticmethod
+    def __get_queue_time_params(submit_token):
         return {
             "REPEAT_SUBMIT_TOKEN": submit_token,
-            "tourFlag": self.direction
+            "tourFlag": "dc"
         }
 
     @staticmethod
@@ -131,12 +131,6 @@ class TicketPurchaser:
             "REPEAT_SUBMIT_TOKEN": submit_token,
             "orderSequence_no": order_id
         }
-
-    def __get_purchase_confirm_url(self):
-        return {
-            TicketDirection.ONE_WAY: "https://kyfw.12306.cn/otn/confirmPassenger/initDc",
-            TicketDirection.ROUND_TRIP: "https://kyfw.12306.cn/otn/confirmPassenger/initWc"
-        }[self.direction]
 
     @staticmethod
     def __get_passenger_strs(passenger_dict):
@@ -164,7 +158,7 @@ class TicketPurchaser:
         return re.match(".*['\"]key_check_isChange['\"]\s*:\s*['\"]([^'\"]*).*", text, flags=re.S).group(1)
 
     def __get_purchase_page(self):
-        url = self.__get_purchase_confirm_url()
+        url = "https://kyfw.12306.cn/otn/confirmPassenger/initDc"
         response = webrequest.post(url, cookies=self.__cookies)
         return response.text
 
