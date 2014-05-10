@@ -15,142 +15,66 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
-#
-# TODO: Improve API for GUI callers
-
-import threading
 from core import webrequest
 from core.webrequest import HTTPError
 
 
-# Global lock for all captcha solvers
-__captcha_lock = threading.Lock()
-__cached_answer = None
+class Captcha:
+    def __init__(self, cookies, captcha_type):
+        self.__cookies = cookies
+        self.__type = captcha_type
+        self.answer = None
 
+    def __get_request_params(self):
+        return {
+            "login": {
+                "module": "login",
+                "rand": "sjrand"
+            },
+            "purchase": {
+                "module": "passenger",
+                "rand": "randp"
+            }
+        }[self.__type]
 
-def on_begin():
-    pass
+    def __get_check_data(self, answer):
+        return {
+            "login": {
+                "rand": "sjrand",
+                "randCode": answer
+            },
+            "purchase": {
+                "rand": "randp",
+                "randCode": answer
+            }
+        }[self.__type]
 
+    def refresh_image(self):
+        # Note: Requesting a login captcha while logged in seems to be okay,
+        # but requesting a purchase captcha while logged out fails.
+        url = "https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew.do"
+        params = self.__get_request_params()
+        response = webrequest.get(url, params=params, cookies=self.__cookies)
+        content_type = response.headers["Content-Type"].split(";")[0]
+        assert content_type == "image/jpeg"
+        # When changing the image, invalidate the old answer (if any)
+        self.answer = None
+        return response.content
 
-def on_new_image(image_data):
-    raise NotImplementedError()
+    def submit_answer(self, answer):
+        url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"
+        data = self.__get_check_data(answer)
+        try:
+            json = webrequest.post_json(url, data=data, cookies=self.__cookies)
+            success = json.get_bool("data")
+            if success:
+                self.answer = answer
+            return success
+        except HTTPError as ex:
+            if ex.response.status_code == 406:
+                # 406 means the request was okay, but the
+                # server said our answer's format was invalid
+                return False
 
-
-def on_input_answer():
-    raise NotImplementedError()
-
-
-def on_incorrect_answer():
-    pass
-
-
-def on_end():
-    pass
-
-
-def solve_login_captcha(cookies):
-    return __do_captcha("login", cookies)
-
-
-def solve_purchase_captcha(cookies):
-    return __do_captcha("purchase", cookies)
-
-
-def get_login_image(cookies):
-    return __get_image("login", cookies)
-
-
-def get_purchase_image(cookies):
-    return __get_image("purchase", cookies)
-
-
-def check_login_answer(answer, cookies):
-    return __check_answer("login", answer, cookies)
-
-
-def check_purchase_answer(answer, cookies):
-    return __check_answer("purchase", answer, cookies)
-
-
-def set_cache(value):
-    global __cached_answer
-    __cached_answer = value
-
-
-def reset_cache():
-    global __cached_answer
-    __cached_answer = None
-
-
-def __do_captcha(captcha_type, cookies):
-    if __cached_answer is not None:
-        return __cached_answer
-    try:
-        __captcha_lock.acquire()
-        on_begin()
-        while True:
-            image_data = __get_image(captcha_type, cookies)
-            on_new_image(image_data)
-            while True:
-                answer = on_input_answer()
-                if answer is None:
-                    break
-                if __check_answer(captcha_type, answer, cookies):
-                    return answer
-                on_incorrect_answer()
-    finally:
-        on_end()
-        __captcha_lock.release()
-
-
-def __get_request_params(captcha_type):
-    return {
-        "login": {
-            "module": "login",
-            "rand": "sjrand"
-        },
-        "purchase": {
-            "module": "passenger",
-            "rand": "randp"
-        }
-    }[captcha_type]
-
-
-def __get_check_data(captcha_type, answer):
-    return {
-        "login": {
-            "rand": "sjrand",
-            "randCode": answer
-        },
-        "purchase": {
-            "rand": "randp",
-            "randCode": answer
-        }
-    }[captcha_type]
-
-
-def __get_image(captcha_type, cookies):
-    # Note: Requesting a login captcha while logged in seems to be okay,
-    # but requesting a purchase captcha while logged out fails.
-    url = "https://kyfw.12306.cn/otn/passcodeNew/getPassCodeNew.do"
-    params = __get_request_params(captcha_type)
-    response = webrequest.get(url, params=params, cookies=cookies)
-    content_type = response.headers["Content-Type"].split(";")[0]
-    assert content_type == "image/jpeg"
-    return response.content
-
-
-def __check_answer(captcha_type, answer, cookies):
-    url = "https://kyfw.12306.cn/otn/passcodeNew/checkRandCodeAnsyn"
-    data = __get_check_data(captcha_type, answer)
-    try:
-        json = webrequest.post_json(url, data=data, cookies=cookies)
-        return json.get_bool("data")
-    except HTTPError as ex:
-        if ex.response.status_code == 406:
-            # 406 means the request was okay, but the
-            # server said our answer's format was invalid
-            return False
-
-        # Otherwise, propagate the exception to the caller
-        raise
+            # Otherwise, propagate the exception to the caller
+            raise

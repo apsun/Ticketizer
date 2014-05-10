@@ -15,6 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
+from core import htmlstripper
 
 
 class RequestError(Exception):
@@ -53,18 +54,22 @@ class JsonDict(dict):
             self.raise_error()
         return value
 
-    def raise_error(self):
+    def raise_error(self, message=None):
         base = self
         while base.parent is not None:
             base = base.parent
         assert isinstance(base, (RootJsonList, RootJsonDict))
-        messages = base.get("messages")
-        if messages is None or len(messages) == 0:
-            raise RequestError("Unknown error occured", base, base.response)
-        elif len(messages) == 1:
-            raise RequestError(messages[0], base, base.response)
+        if message is None:
+            messages = base.get("messages")
+            if messages is None or len(messages) == 0:
+                raise RequestError("Unknown error occured", base, base.response)
+            elif len(messages) == 1:
+                raise RequestError(htmlstripper.strip_html(messages[0]), base, base.response)
+            else:
+                messages = list(map(htmlstripper.strip_html, messages))
+                raise RequestError(messages, base, base.response)
         else:
-            raise RequestError(messages, base, base.response)
+            raise RequestError(htmlstripper.strip_html(message), base, base.response)
 
     def get_bool(self, item):
         value = self[item]

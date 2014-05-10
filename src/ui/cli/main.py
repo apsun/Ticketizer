@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
-
 import os
 import time
 import codecs
@@ -27,8 +26,8 @@ import datetime
 
 # Oh dear god, it's dependency hell >_<
 from core import timeconverter, logger
+from core.auth.cookies import SessionCookies
 from core.logger import LogType
-from core.auth import captcha
 from core.enums import TrainType, TicketType, TicketStatus, PassengerType, IdentificationType, Gender
 from core.processing.containers import ValueRange
 from core.processing.filter import TrainFilter
@@ -589,39 +588,32 @@ def print_config():
     print("-" * 79)
 
 
-def register_captcha_solver():
+def solve_captcha(captcha):
     captcha_path = os.path.abspath(config.get("captcha_path", "captcha.jpg"))
-
-    def on_begin():
+    try:
         print(localization.CAPTCHA_BEGIN)
-
-    def on_new_image(image_data):
-        with open(captcha_path, "wb") as f:
-            f.write(image_data)
-        print(localization.CAPTCHA_SAVED.format(captcha_path))
-        webbrowser.open(captcha_path)
-
-    def on_input_answer():
-        answer = input(localization.ENTER_CAPTCHA)
-        if answer == "":
-            return None
-        return answer
-
-    def on_incorrect_answer():
-        print(localization.INCORRECT_CAPTCHA)
-
-    def on_end():
-        os.remove(captcha_path)
-
-    captcha.on_begin = on_begin
-    captcha.on_new_image = on_new_image
-    captcha.on_input_answer = on_input_answer
-    captcha.on_incorrect_answer = on_incorrect_answer
-    captcha.on_end = on_end
+        while True:
+            image_data = captcha.refresh_image()
+            with open(captcha_path, "wb") as f:
+                f.write(image_data)
+            print(localization.CAPTCHA_SAVED.format(captcha_path))
+            webbrowser.open(captcha_path)
+            while True:
+                answer = input(localization.ENTER_CAPTCHA)
+                if answer == "":
+                    break
+                if captcha.submit_answer(answer):
+                    return answer
+                print(localization.INCORRECT_CAPTCHA)
+    finally:
+        try:
+            os.remove(captcha_path)
+        except OSError:
+            pass
 
 
 # -------------------------------Core functions-------------------------------
-def login(retry, auto):
+def login(cookies, retry, auto):
     if auto:
         username = config.get("username")
         password = config.get("password")
@@ -629,7 +621,8 @@ def login(retry, auto):
         username = None
         password = None
 
-    login_manager = LoginManager()
+    login_manager = LoginManager(cookies)
+    solve_captcha(login_manager.captcha)
     while True:
         if username is None:
             username = input(localization.ENTER_USERNAME)
@@ -712,9 +705,11 @@ def query(station_list, retry, auto):
         return train_list
 
 
-def purchase(login_manager, train, auto):
-    purchaser = TicketPurchaser(login_manager.cookies)
+def purchase(cookies, train, auto):
+    purchaser = TicketPurchaser(cookies)
     purchaser.train = train
+    purchaser.queue_callback = purchase_queue_callback
+    purchase_data = purchaser.begin_purchase()
 
     # Get passengers
     passenger_list = get_passenger_list(purchaser)
@@ -723,9 +718,13 @@ def purchase(login_manager, train, auto):
     # Select tickets
     available_tickets = [t for t in train.tickets if t.status == TicketStatus.NORMAL]
     selected_tickets = select_tickets(selected_passenger_list, available_tickets, auto)
+    purchase_data.ticket_map = selected_tickets
+
+    # Solve captcha
+    solve_captcha(purchaser.captcha)
 
     # Submit the order
-    order_id = purchaser.execute(selected_tickets, purchase_queue_callback)
+    order_id = purchaser.complete_purchase(purchase_data)
     if order_id is not None:
         print(localization.ORDER_COMPLETED.format(order_id))
     else:
@@ -736,12 +735,13 @@ def purchase(login_manager, train, auto):
 # ----------------------------------Main UI-----------------------------------
 def autobuy():
     # Get station list
-    station_list = StationList()
+    station_list = StationList.instance()
+    cookies = SessionCookies()
 
     # Login beforehand (just in case!)
     # TODO: Allow multiple logins
     try:
-        login_manager = login(True, auto=True)
+        login_manager = login(cookies, retry=True, auto=True)
     except SystemMaintenanceError:
         # Stupid website goes offline every night for "maintenance".
         print(localization.SYSTEM_OFFLINE)
@@ -750,7 +750,7 @@ def autobuy():
     retry_search = config.get("search_retry", True)
     while True:
         # Search for train
-        train_list = query(station_list, auto=True, retry=retry_search)
+        train_list = query(station_list, retry=retry_search, auto=True)
         if train_list is None:
             # No trains found and retry is False
             return None
@@ -758,7 +758,7 @@ def autobuy():
         # Purchase tickets
         try:
             train = select_train(train_list, auto=True)
-            return purchase(login_manager, train, auto=True)
+            return purchase(cookies, train, auto=True)
         except UnfinishedTransactionError:
             # TODO: Change an account if possible?
             print(localization.UNFINISHED_TRANSACTIONS)
@@ -769,12 +769,14 @@ def autobuy():
             # We simply re-query the train list and try again.
             train_list = query(station_list, retry_search, auto=True)
             train = select_train(train_list, auto=True)
-            return purchase(login_manager, train, auto=True)
+            return purchase(cookies, train, auto=True)
         except NotEnoughTicketsError:
             # Tickets ran out while we tried to purchase
             # Just jump back to the beginning of the loop
             # and try again.
             pass
+
+    login_manager.logout()
 
 
 def interactive():
@@ -785,7 +787,7 @@ def main():
     auto, success = setup()
     if not success:
         return
-    register_captcha_solver()
+    # register_captcha_solver()
 
     if auto:
         autobuy()

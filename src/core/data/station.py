@@ -15,7 +15,7 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
-
+import functools
 from core import logger, webrequest
 
 
@@ -45,8 +45,8 @@ class Station:
 
 
 class StationList:
-    def __init__(self, use_dict=True):
-        self.stations = self.__get_all_stations()
+    def __init__(self, raw_list, use_dict=True):
+        self.stations = raw_list
         # We can get better lookup performance at the
         # cost of higher memory usage. Choose wisely.
         if use_dict:
@@ -61,7 +61,8 @@ class StationList:
             self.abbreviation_lookup = None
 
     @staticmethod
-    def __get_all_stations():
+    @functools.lru_cache(maxsize=2)
+    def instance(use_dict=True):
         url = "https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"
         response = webrequest.get(url)
         js_split = response.text.split("'")
@@ -69,7 +70,7 @@ class StationList:
         station_split = js_split[1].split("@")
         station_list = [Station(item.split("|")) for item in station_split[1:]]
         logger.debug("Fetched station list ({0} stations)".format(len(station_list)))
-        return station_list
+        return StationList(station_list, use_dict)
 
     @staticmethod
     def __generate_abbreviation_lookup(station_list):

@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
-
 import requests
 import urllib.parse
 from requests.exceptions import HTTPError
@@ -32,7 +31,7 @@ def request(method, url, **kwargs):
             try:
                 if len(value) == 0:
                     continue
-                if isinstance(value, dict):
+                if isinstance(value, (dict, SessionCookies)):
                     value = value.items()
                 value = "".join(map(lambda x: "\n   -> {0}: {1}".format(*x), value))
             except TypeError:
@@ -53,7 +52,7 @@ def request(method, url, **kwargs):
         raise
     cookies = kwargs.get("cookies")
     if isinstance(cookies, SessionCookies):
-        cookies.update_cookies(response)
+        cookies.update(response.cookies)
     return response
 
 

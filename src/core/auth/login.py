@@ -15,11 +15,9 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
-
 from core import logger, webrequest
-from core.auth import captcha
+from core.auth.authable import Authable
 from core.jsonwrapper import RequestError
-from core.auth.cookies import SessionCookies
 
 
 class LoginFailedError(Exception):
@@ -42,16 +40,15 @@ class SystemMaintenanceError(LoginFailedError):
     pass
 
 
-class LoginManager:
-    def __init__(self):
-        self.cookies = SessionCookies()
+class LoginManager(Authable):
+    def __init__(self, cookies):
+        super(LoginManager, self).__init__(cookies, "login")
 
-    @staticmethod
-    def __get_login_params(username, password, captcha_answer):
+    def __get_login_params(self, username, password):
         return {
             "loginUserDTO.user_name": username,
             "userDTO.password": password,
-            "randCode": captcha_answer
+            "randCode": self.captcha.answer
         }
 
     def is_logged_in(self):
@@ -59,9 +56,9 @@ class LoginManager:
         json = webrequest.post_json(url, cookies=self.cookies)
         return json["data"].get_bool("flag")
 
+    @Authable.consumes_captcha(reset_on_exception=False)
     def login(self, username, password):
-        captcha_answer = captcha.solve_login_captcha(self.cookies)
-        data = self.__get_login_params(username, password, captcha_answer)
+        data = self.__get_login_params(username, password)
         url = "https://kyfw.12306.cn/otn/login/loginAysnSuggest"
         try:
             json = webrequest.post_json(url, data=data, cookies=self.cookies)

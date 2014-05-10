@@ -17,6 +17,11 @@
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 
 
+class TrainPriorityMap:
+    # TODO: Implement
+    pass
+
+
 class TrainSorter:
     def __init__(self):
         self.favorites = None

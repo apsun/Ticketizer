@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
-
 from core.enums import TrainType, TicketType, TicketStatus
 from core.processing.containers import BitFlags, FlagSet, ValueRange
 

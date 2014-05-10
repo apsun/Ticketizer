@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
-
 from core import logger, timeconverter, webrequest
 from core.enums import TicketPricing
 from core.jsonwrapper import RequestError
