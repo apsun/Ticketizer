@@ -19,20 +19,22 @@
 
 class TrainType:
     NONE = 0
-    OTHER = 1
-    K = 2
-    T = 4
-    Z = 8
-    D = 16
-    G = 32
-    ALL = 63
+    K = 1
+    T = 2
+    Z = 4
+    D = 8
+    G = 16
+    C = 32
+    OTHER = 64
+    ALL = 127
 
     REVERSE_ABBREVIATION_LOOKUP = {
         "K": K,
         "T": T,
         "Z": Z,
         "D": D,
-        "G": G
+        "G": G,
+        "C": C,
     }
 
 

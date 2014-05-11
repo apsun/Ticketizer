@@ -651,7 +651,7 @@ def login(cookies, retry, auto):
 
 def query(station_list, retry, auto):
     # Construct query object
-    query_obj = TrainQuery(station_list)
+    query_obj = TrainQuery()
     query_obj.date = select_train_date(auto)
     query_obj.departure_station = select_departure_station(station_list, auto)
     query_obj.destination_station = select_destination_station(station_list, auto)
@@ -787,8 +787,6 @@ def main():
     auto, success = setup()
     if not success:
         return
-    # register_captcha_solver()
-
     if auto:
         autobuy()
     else:

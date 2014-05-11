@@ -15,9 +15,12 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
+#
+# TODO: Rewrite using co-routines for GUI use
 from datetime import datetime, timedelta
 from collections import OrderedDict
 from core import timeconverter, logger, webrequest
+from core.data.station import StationList
 from core.search.search import TrainQuery, TicketPricing
 from core.processing.containers import ValueRange, FlagSet
 
@@ -48,9 +51,7 @@ class MultiTrainPath:
 
 
 class PathFinder:
-    def __init__(self, station_list, path_selector):
-        # A list of stations (used for querying the station list)
-        self.__station_list = station_list
+    def __init__(self, path_selector):
         # This is a callback function that takes a list of
         # trains and returns a selected train path
         self.path_selector = path_selector
@@ -122,22 +123,23 @@ class PathFinder:
         assert istart is not None
         assert json_station_list[istart]["station_name"] == train.departure_station.name
         assert json_station_list[iend-1]["station_name"] == train.destination_station.name
-        station_list = []
+        available_stations = []
+        station_list = StationList.instance()
         for i in range(istart+1, iend-1):
             station_name = json_station_list[i]["station_name"]
             if self.station_blacklist[station_name]:
                 continue
-            station = self.__station_list.get_by_name(station_name)
-            station_list.append(station)
-        station_list.append(train.destination_station)
-        return station_list
+            station = station_list.get_by_name(station_name)
+            available_stations.append(station)
+        available_stations.append(train.destination_station)
+        return available_stations
 
-    def __get_path_recursive(self, train_list, station_list, query, is_first):
+    def __get_path_recursive(self, train_list, visited_stations, query, is_first):
         # Note that the "example" train is passed in as the first
         # item in the train list. After our path has been built,
         # we have to remove this item from the list.
         prev_train = train_list[-1]
-        last_station = station_list[-1]
+        last_station = visited_stations[-1]
 
         if is_first:
             query.exact_departure_station = self.exact_departure_station
@@ -161,7 +163,7 @@ class PathFinder:
         # results themselves.
         next_train_dict = OrderedDict()
 
-        for next_station in station_list:
+        for next_station in visited_stations:
             # Make sure the destination fuzzy search option is set
             # correctly based on which station we're traveling to
             if next_station == last_station:
@@ -225,7 +227,7 @@ class PathFinder:
             curr_station = next_train_dict[selected_train]
 
             # "Slice" off the stations that we have already passed
-            remaining_stations = station_list[station_list.index(curr_station)+1:]
+            remaining_stations = visited_stations[visited_stations.index(curr_station)+1:]
 
             # If there are no stations left, we are at our destination!
             if len(remaining_stations) == 0:
@@ -244,7 +246,7 @@ class PathFinder:
                 query.departure_station.name, departure_station.name))
 
     def get_path(self, train):
-        query = TrainQuery(self.__station_list)
+        query = TrainQuery()
         query.pricing = self.pricing
         substations = self.__get_substations(train)
         try:

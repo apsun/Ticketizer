@@ -15,7 +15,6 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
-import functools
 from core import logger, webrequest
 
 
@@ -45,8 +44,10 @@ class Station:
 
 
 class StationList:
-    def __init__(self, raw_list, use_dict=True):
-        self.stations = raw_list
+    __data__ = None
+
+    def __init__(self, station_list, use_dict=True):
+        self.stations = station_list
         # We can get better lookup performance at the
         # cost of higher memory usage. Choose wisely.
         if use_dict:
@@ -60,17 +61,27 @@ class StationList:
             self.pinyin_lookup = None
             self.abbreviation_lookup = None
 
-    @staticmethod
-    @functools.lru_cache(maxsize=2)
-    def instance(use_dict=True):
-        url = "https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"
-        response = webrequest.get(url)
-        js_split = response.text.split("'")
+    @classmethod
+    def load_list(cls, local_path=None, use_dict=True):
+        if local_path is None:
+            url = "https://kyfw.12306.cn/otn/resources/js/framework/station_name.js"
+            response = webrequest.get(url)
+            text = response.text
+        else:
+            with open(local_path, "rt") as f:
+                text = f.read()
+        js_split = text.split("'")
         assert len(js_split) == 3
         station_split = js_split[1].split("@")
         station_list = [Station(item.split("|")) for item in station_split[1:]]
         logger.debug("Fetched station list ({0} stations)".format(len(station_list)))
-        return StationList(station_list, use_dict)
+        cls.__data__ = StationList(station_list, use_dict)
+
+    @classmethod
+    def instance(cls):
+        if cls.__data__ is None:
+            cls.load_list()
+        return cls.__data__
 
     @staticmethod
     def __generate_abbreviation_lookup(station_list):

@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Ticketizer.  If not, see <http://www.gnu.org/licenses/>.
 from core import logger, timeconverter, webrequest
+from core.data.station import StationList
 from core.enums import TicketPricing
 from core.jsonwrapper import RequestError
 from core.data.train import Train
@@ -30,9 +31,7 @@ class DateOutOfRangeError(SearchFailedError):
 
 
 class TrainQuery:
-    def __init__(self, station_list):
-        # Station list, required for train initialization
-        self.__station_list = station_list
+    def __init__(self):
         # The type of ticket pricing -- normal ("adult") or student
         self.pricing = TicketPricing.NORMAL
         # The departure date -- datetime.date
@@ -68,10 +67,11 @@ class TrainQuery:
             self.destination_station.name,
             timeconverter.date_to_str(self.date)))
         train_list = []
+        station_list = StationList.instance()
         for train_data in json_data:
             query_data = train_data["queryLeftNewDTO"]
-            departure_station = self.__station_list.get_by_id(query_data["from_station_telecode"])
-            destination_station = self.__station_list.get_by_id(query_data["to_station_telecode"])
+            departure_station = station_list.get_by_id(query_data["from_station_telecode"])
+            destination_station = station_list.get_by_id(query_data["to_station_telecode"])
             if self.exact_departure_station and departure_station != self.departure_station:
                 continue
             if self.exact_destination_station and destination_station != self.destination_station:

@@ -1,5 +1,6 @@
 .idea/
 /src/*.*
+/src/ui/data/*.*
 Ticketizer.iml
 config.py
 *.pyc
