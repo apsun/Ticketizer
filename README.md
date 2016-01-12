@@ -1,18 +1,49 @@
-What is Ticketizer? Why, it's only the best to happen to
-12306.cn since, well, 12306.cn! To be specific, it's a
-library (written in Python!) that abstracts away most of
-the underlying web API, leaving only an efficient and
-simple API for client code to call.
+# Ticketizer
 
-Ticketizer is driven by the philosophy that you shouldn't
-have to jump through hoops to get where you want. Under
-no circumstances should clients have to step through dozens
-of web requests just to query the number of tickets remaining.
+Train ticket auto-buyer for 12306.cn. Has primitive support for path-finding,
+cost/time optimization, and auto-buying (assuming you have access to a captcha
+solver service).
 
-There are two major components to Ticketizer: a core
-("business logic") component, which is responsible for
-abstracting away all web requests, and a UI component,
-which takes the raw data from the core component and
-exposes it to the user. The core layer has been designed
-to allow for interchangeable UI layers, which means
-you can use the core layer from both CLI and GUI alike.
+## Notice
+
+This project is *abandoned*. Maybe the code still works, maybe it doesn't
+(chances are, it doesn't). Feel free to fork the project and modify it to
+your heart's content.
+
+## License
+
+All code is licensed under [GPLv3](http://www.gnu.org/licenses/gpl-3.0.txt).
+
+## Disclaimer
+The author of this program is in no way affiliated with 12306,
+and will not be held accountable for any damage caused by using
+this program. (In 21st century English: If you get banned for
+using this, sucks for you.)
+
+## Usage
+`python -m ui.cli.main [--auto] [--config <path>] [--verbosity <flags>]`
+
+### Arguments
+
+#### `--auto`
+
+Turns on auto-fill mode. This means that configuration values
+will be used by default whenever possible, so that you will
+not have to manually enter in the information.
+
+#### `--config <path>`
+
+Specifies the configuration script path.
+Example usage: `--config "path/to/config/myconfigfile.py"`
+
+#### `--verbosity <flags>`
+
+Specifies the logging verbosity. The format is as follows:
+
+- enable all logging: `all`
+- disable all logging: `none`
+- selectively enable logging: `[d][n][w][e]`
+  - d: Debug
+  - n: Network
+  - w: Warning
+  - e: Error

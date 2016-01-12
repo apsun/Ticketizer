@@ -1,6 +1,7 @@
+# IDEA
 .idea/
-/src/*.*
-/src/ui/data/*.*
-Ticketizer.iml
-config.py
+*.iml
+
+# Python
 *.pyc
+__pycache__/
